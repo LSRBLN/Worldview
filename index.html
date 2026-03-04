@@ -64,6 +64,29 @@
           <label><input type="checkbox" data-layer="shaders" checked /> Vision Shader Output</label>
         </section>
 
+        <section class="toolbar-section" aria-label="visibility controls">
+          <h2>Object Visibility</h2>
+          <div class="button-row">
+            <button type="button" id="showAllObjectsButton">Show All</button>
+            <button type="button" id="hideAllObjectsButton">Hide All</button>
+          </div>
+          <label for="flightVisibilityMode">Flight Filter</label>
+          <select id="flightVisibilityMode">
+            <option value="all" selected>All Flights</option>
+            <option value="military">Military Only</option>
+            <option value="civilian">Civilian Only</option>
+          </select>
+          <label for="flightAltitudeBand">Altitude Band</label>
+          <select id="flightAltitudeBand">
+            <option value="all" selected>All Altitudes</option>
+            <option value="low">LOW (&lt; 3 km)</option>
+            <option value="mid">MID (3–9 km)</option>
+            <option value="high">HIGH (&gt; 9 km)</option>
+          </select>
+          <label><input type="checkbox" id="staleTracksOnly" /> Stale Tracks Only</label>
+          <button type="button" id="resetVisibilityFiltersButton">Reset Visibility Filters</button>
+        </section>
+
         <section class="toolbar-section" aria-label="shader controls">
           <h2>Vision Modes</h2>
           <div class="shader-mode-grid">

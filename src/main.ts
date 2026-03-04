@@ -184,6 +184,232 @@ function safeText(value: unknown): string {
   return text.length > 0 ? text : '—';
 }
 
+type OpenSkyStateVector = Array<string | number | null>;
+type OpenSkyStatesResponse = {
+  time?: number;
+  states?: OpenSkyStateVector[];
+};
+
+type OpenSkyFlightRecord = {
+  icao24?: string;
+  firstSeen?: number;
+  lastSeen?: number;
+  estDepartureAirport?: string | null;
+  estArrivalAirport?: string | null;
+  callsign?: string | null;
+};
+
+type OpenSkyTrackResponse = {
+  icao24?: string;
+  callsign?: string;
+  path?: Array<[number, number, number, number, boolean]>;
+};
+
+type FlightVisibilityMode = 'all' | 'military' | 'civilian';
+type FlightAltitudeBand = 'all' | 'low' | 'mid' | 'high';
+
+type FlightVisibilityState = {
+  mode: FlightVisibilityMode;
+  altitudeBand: FlightAltitudeBand;
+  staleOnly: boolean;
+};
+
+type AdsbTrackMeta = {
+  key: string;
+  entity: Cesium.Entity;
+  isMilitary: boolean;
+  altitudeM: number;
+  lastSeenEpochMs: number;
+};
+
+const flightVisibilityState: FlightVisibilityState = {
+  mode: 'all',
+  altitudeBand: 'all',
+  staleOnly: false
+};
+
+const adsbTrackRegistry = new Map<string, AdsbTrackMeta>();
+const manuallyHiddenEntityIds = new Set<string>();
+const adsbTrackStaleThresholdMs = 120_000;
+let lastOpenSkyIntelUpdateEpochMs = 0;
+
+function isAdsbMilitaryTrack(callsign: string): boolean {
+  return /MIL|ARMY|NAVY|AIR|RCH|RRR|QID|UAE|IRIAF|F\d{1,2}|USAF|RAF|IAF/i.test(callsign);
+}
+
+function normalizeAdsbTrackKey(state: OpenSkyStateVector, index: number): string {
+  const icao24 = String(state[0] ?? '').trim().toLowerCase();
+  const callsign = String(state[1] ?? '').trim().toUpperCase();
+  if (icao24.length > 0) {
+    return `adsb-live-${icao24}`;
+  }
+  if (callsign.length > 0) {
+    return `adsb-live-callsign-${callsign}`;
+  }
+  return `adsb-live-unknown-${index}`;
+}
+
+function classifyAltitudeBand(altitudeM: number): FlightAltitudeBand {
+  if (altitudeM < 3_000) {
+    return 'low';
+  }
+  if (altitudeM <= 9_000) {
+    return 'mid';
+  }
+  return 'high';
+}
+
+function matchesFlightVisibility(meta: AdsbTrackMeta): boolean {
+  if (manuallyHiddenEntityIds.has(meta.entity.id as string)) {
+    return false;
+  }
+
+  if (flightVisibilityState.mode === 'military' && !meta.isMilitary) {
+    return false;
+  }
+
+  if (flightVisibilityState.mode === 'civilian' && meta.isMilitary) {
+    return false;
+  }
+
+  if (flightVisibilityState.altitudeBand !== 'all' && classifyAltitudeBand(meta.altitudeM) !== flightVisibilityState.altitudeBand) {
+    return false;
+  }
+
+  if (flightVisibilityState.staleOnly) {
+    const staleAgeMs = Date.now() - meta.lastSeenEpochMs;
+    if (staleAgeMs < adsbTrackStaleThresholdMs) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function applyFlightVisibilityFilters(): void {
+  adsbTrackRegistry.forEach((meta) => {
+    meta.entity.show = matchesFlightVisibility(meta);
+  });
+  viewer.scene.requestRender();
+}
+
+function showAllObjects(): void {
+  manuallyHiddenEntityIds.clear();
+  const visited = new Set<Cesium.DataSource>();
+  Object.values(layerManager).forEach((source) => {
+    if (visited.has(source)) {
+      return;
+    }
+    visited.add(source);
+    source.entities.values.forEach((entity) => {
+      entity.show = true;
+    });
+  });
+  applyFlightVisibilityFilters();
+  setStatus('All objects visible.');
+}
+
+function hideAllObjects(): void {
+  const visited = new Set<Cesium.DataSource>();
+  Object.values(layerManager).forEach((source) => {
+    if (visited.has(source)) {
+      return;
+    }
+    visited.add(source);
+    source.entities.values.forEach((entity) => {
+      entity.show = false;
+      manuallyHiddenEntityIds.add(String(entity.id));
+    });
+  });
+  viewer.scene.requestRender();
+  setStatus('All objects hidden.');
+}
+
+function getOpenSkyAuthHeader(): string | null {
+  if (!openSkyUsername || !openSkyPassword) {
+    return null;
+  }
+  return `Basic ${btoa(`${openSkyUsername}:${openSkyPassword}`)}`;
+}
+
+async function fetchOpenSkyEndpoint<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
+  const url = new URL(`${openSkyBaseUrl}${path}`);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || Number.isNaN(value)) {
+        return;
+      }
+      url.searchParams.set(key, String(value));
+    });
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json'
+  };
+  const authHeader = getOpenSkyAuthHeader();
+  if (authHeader) {
+    headers.Authorization = authHeader;
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenSky ${path} failed: HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+const openSkyApi = {
+  statesAll: (params: { lamin: number; lomin: number; lamax: number; lomax: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyStatesResponse>('/states/all', params);
+  },
+  tracksAll: (params: { icao24: string; time: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyTrackResponse>('/tracks/all', params);
+  },
+  flightsAircraft: (params: { icao24: string; begin: number; end: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyFlightRecord[]>('/flights/aircraft', params);
+  },
+  flightsAll: (params: { begin: number; end: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyFlightRecord[]>('/flights/all', params);
+  },
+  flightsArrival: (params: { airport: string; begin: number; end: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyFlightRecord[]>('/flights/arrival', params);
+  },
+  flightsDeparture: (params: { airport: string; begin: number; end: number }) => {
+    return fetchOpenSkyEndpoint<OpenSkyFlightRecord[]>('/flights/departure', params);
+  }
+};
+
+async function refreshOpenSkyIntelSnapshot(sampleIcao24: string, referenceTimeSec: number): Promise<void> {
+  const now = Date.now();
+  if (now - lastOpenSkyIntelUpdateEpochMs < 5 * 60 * 1000) {
+    return;
+  }
+  lastOpenSkyIntelUpdateEpochMs = now;
+
+  const begin = referenceTimeSec - 4 * 3600;
+  const end = referenceTimeSec;
+
+  try {
+    const [track, flights] = await Promise.all([
+      openSkyApi.tracksAll({ icao24: sampleIcao24, time: referenceTimeSec }),
+      openSkyApi.flightsAircraft({ icao24: sampleIcao24, begin, end })
+    ]);
+
+    const trackPoints = track.path?.length ?? 0;
+    const flightCount = flights.length;
+    updateRuntimeDiagnostics({
+      flightsDetail: `OpenSky states/all + tracks/all + flights/aircraft • ${adsbTrackRegistry.size} tracks • intel: ${sampleIcao24} ${trackPoints} pts/${flightCount} flights`
+    });
+  } catch (error) {
+    console.debug('[WorldView][OpenSky] Intel snapshot unavailable', error);
+  }
+}
+
 function getDistanceToCameraKm(entity: Cesium.Entity): string {
   const positionProperty = entity.position;
   if (!positionProperty) {
@@ -221,6 +447,10 @@ console.info('[WorldView][Boot] Container-Größe beim Start', {
 const googleMapTilesKey = (import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined)?.trim();
 const arcgisApiKey = (import.meta.env.VITE_ARCGIS_API_KEY as string | undefined)?.trim();
 const arcgisBasemapStyle = (import.meta.env.VITE_ARCGIS_BASEMAP_STYLE as string | undefined)?.trim() || 'arcgis/light-gray';
+const openSkyBaseUrl = ((import.meta.env.VITE_OPENSKY_BASE_URL as string | undefined)?.trim() || 'https://opensky-network.org/api');
+const openSkyUsername = (import.meta.env.VITE_OPENSKY_USERNAME as string | undefined)?.trim();
+const openSkyPassword = (import.meta.env.VITE_OPENSKY_PASSWORD as string | undefined)?.trim();
+const adsbFallbackUrl = (import.meta.env.VITE_ADSB_FALLBACK_URL as string | undefined)?.trim();
 const aisWebSocketUrl = ((import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim() || 'wss://stream.aisstream.io/v0/stream');
 const aisWebSocketApiKey = (
   (import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined)?.trim()
@@ -480,6 +710,7 @@ function bindHideEntityAction(): void {
     }
 
     target.show = false;
+    manuallyHiddenEntityIds.add(String(target.id));
     viewer.selectedEntity = undefined;
     renderEntityInfoPanel(null);
     setStatus(`Entity hidden: ${safeText(target.name ?? target.id)}`);
@@ -1219,124 +1450,173 @@ async function pollAdsbLayer(): Promise<void> {
       return;
     }
 
-    const openskyUrl = 'https://opensky-network.org/api/states/all?lamin=24&lomin=44&lamax=40&lomax=64';
-
-    // Kostenfrei weil Free-Tier / GitHub Student Pack
-    // OpenSky free endpoint mit niedriger Poll-Frequenz.
-    let response = await fetch(openskyUrl);
     let activeFeedLabel = 'OpenSky';
-    let data: {
-      states?: Array<(string | number | null)[]>;
-    };
+    let data: OpenSkyStatesResponse = { states: [] };
 
-    if (!response.ok) {
-      console.warn('[WorldView][Flights] OpenSky fehlgeschlagen, nutze Fallback', {
-        status: response.status,
-        statusText: response.statusText
-      });
-      setHealth(`OpenSky error ${response.status} • switching to fallback`);
+    try {
+      data = await openSkyApi.statesAll({ lamin: 24, lomin: 44, lamax: 40, lomax: 64 });
+    } catch (openSkyError) {
+      console.warn('[WorldView][Flights] OpenSky states/all fehlgeschlagen, nutze Fallback', openSkyError);
+      setHealth('OpenSky states/all unavailable • switching to fallback source');
       activeFeedLabel = 'ADS-B Fallback';
-      throw new Error(`OpenSky nicht verfügbar: ${response.status}`);
+
+      if (adsbFallbackUrl) {
+        const fallbackResponse = await fetch(adsbFallbackUrl);
+        if (!fallbackResponse.ok) {
+          throw new Error(`ADS-B Fallback failed: HTTP ${fallbackResponse.status}`);
+        }
+
+        const rawFallback = (await fallbackResponse.json()) as {
+          states?: Array<(string | number | null)[]>;
+          aircraft?: Array<{
+            hex?: string;
+            lat?: number;
+            lon?: number;
+            alt_baro?: number;
+            flight?: string;
+          }>;
+        };
+
+        if (Array.isArray(rawFallback.states)) {
+          data = { states: rawFallback.states };
+        } else if (Array.isArray(rawFallback.aircraft)) {
+          data = {
+            states: rawFallback.aircraft.map((entry) => [
+              entry.hex ?? 'na',
+              entry.flight ?? 'UNKNOWN',
+              null,
+              null,
+              Math.floor(Date.now() / 1000),
+              entry.lon ?? null,
+              entry.lat ?? null,
+              entry.alt_baro ?? 0,
+              null,
+              null
+            ])
+          };
+        } else {
+          data = { states: [] };
+        }
+      } else {
+        throw openSkyError;
+      }
     }
 
-    if (!response.ok) {
-      throw new Error(`ADS-B Feed Fehler: ${response.status}`);
-    }
-
-    const rawData = (await response.json()) as {
-      states?: Array<(string | number | null)[]>;
-      aircraft?: Array<{
-        hex?: string;
-        lat?: number;
-        lon?: number;
-        alt_baro?: number;
-        flight?: string;
-      }>;
-    };
-
-    if (Array.isArray(rawData.states)) {
-      data = { states: rawData.states };
-    } else if (Array.isArray(rawData.aircraft)) {
-      data = {
-        states: rawData.aircraft.map((entry) => [
-          entry.hex ?? 'na',
-          entry.flight ?? 'UNKNOWN',
-          null,
-          null,
-          null,
-          entry.lon ?? null,
-          entry.lat ?? null,
-          entry.alt_baro ?? 0,
-          null,
-          null
-        ])
-      };
-    } else {
-      data = { states: [] };
-    }
-
-    layerCollections.adsb.entities.removeAll();
     const militaryTracks: Array<{ callsign: string; altitude: string; speed: string; source: string }> = [];
     const maxFlights = 120;
     const states = data.states ?? [];
     let renderedFlights = 0;
+    const seenTrackKeys = new Set<string>();
+    const nowEpochMs = Date.now();
+    let sampleIcao24 = '';
+    let sampleTrackLastContactSec = 0;
 
     for (let i = 0; i < Math.min(states.length, maxFlights); i += 1) {
       const state = states[i];
+      const trackKey = normalizeAdsbTrackKey(state, i);
+      seenTrackKeys.add(trackKey);
+      const icao24 = String(state[0] ?? '').trim().toLowerCase();
       const callsign = String(state[1] ?? 'UNKNOWN').trim();
       const lon = Number(state[5]);
       const lat = Number(state[6]);
       const altitude = Number(state[7] ?? 0);
       const velocityMs = Number(state[9] ?? NaN);
       const speedKts = Number.isFinite(velocityMs) ? velocityMs * 1.94384 : NaN;
+      const lastContactSec = Number(state[4] ?? 0);
+      const isStale = Number.isFinite(lastContactSec)
+        ? nowEpochMs - (lastContactSec * 1000) > adsbTrackStaleThresholdMs
+        : false;
 
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
         continue;
       }
 
-      const isMilitary = /MIL|ARMY|NAVY|AIR|RCH|RRR|QID|UAE|IRIAF|F\d{1,2}/i.test(callsign);
+      const isMilitary = isAdsbMilitaryTrack(callsign);
       const isBlue = !isMilitary && i % 2 === 0;
       const colorFriendly = Cesium.Color.fromCssColorString('#ffd24a').withAlpha(0.95);
       const colorHostile = Cesium.Color.fromCssColorString('#ff5a5a').withAlpha(0.96);
       const flightColor = isMilitary ? colorHostile : colorFriendly;
 
-      layerCollections.adsb.entities.add({
-        id: `adsb-live-${callsign}-${i}`,
-        name: callsign,
-        position: Cesium.Cartesian3.fromDegrees(lon, lat, altitude),
-        billboard: {
-          // God’s Eye Original-Look – Bilawal-Video March 2026
-          image: isBlue ? planeBlueIconDataUri : planeRedIconDataUri,
-          scale: 0.46,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          color: flightColor,
-          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
-        },
-        path: {
-          resolution: 120,
-          width: isMilitary ? 1.5 : 1.2,
-          leadTime: 600,
-          trailTime: 1200,
-          material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
-        },
-        label: {
-          text: `${callsign} • ALT ${Math.max(0, altitude).toFixed(0)}m`,
-          font: '9pt monospace',
-          fillColor: isMilitary ? Cesium.Color.RED : Cesium.Color.fromCssColorString('#ffd24a'),
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(8, -8),
-          show: true,
-          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
-        },
-        properties: {
+      const position = Cesium.Cartesian3.fromDegrees(lon, lat, altitude);
+      const existingTrack = adsbTrackRegistry.get(trackKey);
+      if (existingTrack) {
+        existingTrack.entity.position = new Cesium.ConstantPositionProperty(position);
+        if (existingTrack.entity.label) {
+          existingTrack.entity.label.text = new Cesium.ConstantProperty(`${callsign} • ALT ${Math.max(0, altitude).toFixed(0)}m`);
+        }
+        existingTrack.isMilitary = isMilitary;
+        existingTrack.altitudeM = Math.max(0, altitude);
+        existingTrack.lastSeenEpochMs = Number.isFinite(lastContactSec) && lastContactSec > 0
+          ? lastContactSec * 1000
+          : nowEpochMs;
+        existingTrack.entity.properties = new Cesium.PropertyBag({
           callsign,
           altitude,
           speedKts,
+          icao24,
+          lastContactSec,
+          gpsJamming: isStale,
           status: isMilitary ? 'MILITARY TRACK' : 'TRACKING'
-        }
-      });
+        });
+      } else {
+        const newEntity = layerCollections.adsb.entities.add({
+          id: trackKey,
+          name: callsign,
+          position,
+          billboard: {
+            // God’s Eye Original-Look – Bilawal-Video March 2026
+            image: isBlue ? planeBlueIconDataUri : planeRedIconDataUri,
+            scale: 0.46,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            color: flightColor,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
+          },
+          path: {
+            resolution: 120,
+            width: isMilitary ? 1.5 : 1.2,
+            leadTime: 600,
+            trailTime: 1200,
+            material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
+          },
+          label: {
+            text: `${callsign} • ALT ${Math.max(0, altitude).toFixed(0)}m`,
+            font: '9pt monospace',
+            fillColor: isMilitary ? Cesium.Color.RED : Cesium.Color.fromCssColorString('#ffd24a'),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(8, -8),
+            show: true,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
+          },
+          properties: {
+            callsign,
+            altitude,
+            speedKts,
+            icao24,
+            lastContactSec,
+            gpsJamming: isStale,
+            status: isMilitary ? 'MILITARY TRACK' : 'TRACKING'
+          }
+        });
+
+        adsbTrackRegistry.set(trackKey, {
+          key: trackKey,
+          entity: newEntity,
+          isMilitary,
+          altitudeM: Math.max(0, altitude),
+          lastSeenEpochMs: Number.isFinite(lastContactSec) && lastContactSec > 0
+            ? lastContactSec * 1000
+            : nowEpochMs
+        });
+      }
+
+      if (!sampleIcao24 && icao24) {
+        sampleIcao24 = icao24;
+        sampleTrackLastContactSec = Number.isFinite(lastContactSec) && lastContactSec > 0
+          ? lastContactSec
+          : Math.floor(nowEpochMs / 1000);
+      }
 
       if (isMilitary) {
         militaryTracks.push({
@@ -1348,6 +1628,23 @@ async function pollAdsbLayer(): Promise<void> {
       }
 
       renderedFlights += 1;
+    }
+
+    adsbTrackRegistry.forEach((track, key) => {
+      if (seenTrackKeys.has(key)) {
+        return;
+      }
+
+      const ageMs = nowEpochMs - track.lastSeenEpochMs;
+      if (ageMs > 10 * 60 * 1000) {
+        layerCollections.adsb.entities.remove(track.entity);
+        adsbTrackRegistry.delete(key);
+      }
+    });
+
+    applyFlightVisibilityFilters();
+    if (sampleIcao24) {
+      void refreshOpenSkyIntelSnapshot(sampleIcao24, sampleTrackLastContactSec);
     }
 
     renderMilitaryInfoPanel(militaryTracks);
@@ -1363,7 +1660,7 @@ async function pollAdsbLayer(): Promise<void> {
     } else {
       updateRuntimeDiagnostics({
         flightsFeed: activeFeedLabel === 'OpenSky' ? 'OpenSky online' : 'Fallback active',
-        flightsDetail: `${activeFeedLabel} • ${renderedFlights} flights rendered`
+        flightsDetail: `${activeFeedLabel} states/all • ${renderedFlights} flights rendered • ${adsbTrackRegistry.size} active tracks`
       });
     }
 
@@ -1376,6 +1673,7 @@ async function pollAdsbLayer(): Promise<void> {
     // God’s Eye Original-Look – Bilawal-Video March 2026
     // Produktions-Hardening: Bei API/CORS/Rate-Limit Fehlern bleibt mindestens Replay/CZML-Flugverkehr sichtbar.
     layerCollections.adsb.entities.removeAll();
+    adsbTrackRegistry.clear();
     setDataSourceVisibility(replaySources.adsb, true);
     updateRuntimeDiagnostics({
       flightsFeed: 'Replay/CZML fallback',
@@ -2071,18 +2369,7 @@ viewer.selectedEntityChanged.addEventListener((entity) => {
 });
 
 (window as unknown as { showAllEntities?: () => void; toggleLayer?: (name: string) => void }).showAllEntities = () => {
-  const visited = new Set<Cesium.DataSource>();
-  Object.values(layerManager).forEach((source) => {
-    if (visited.has(source)) {
-      return;
-    }
-    visited.add(source);
-    source.entities.values.forEach((entity) => {
-      entity.show = true;
-    });
-  });
-  viewer.scene.requestRender();
-  setStatus('All manually hidden entities restored.');
+  showAllObjects();
 };
 
 (window as unknown as { showAllEntities?: () => void; toggleLayer?: (name: string) => void }).toggleLayer = toggleLayer;
@@ -2116,6 +2403,9 @@ function setLayerVisibility(layer: string, visible: boolean): void {
   // God’s Eye Original-Look – Bilawal-Video March 2026
   syncBottomLayerButtons();
   setStatus(`Layer ${layer.toUpperCase()}: ${visible ? 'ACTIVE' : 'OFF'}`);
+  if (layer === 'adsb' && visible) {
+    applyFlightVisibilityFilters();
+  }
   viewer.scene.requestRender();
 }
 
@@ -2157,6 +2447,74 @@ function bindToolbarEvents(): void {
       syncBottomLayerButtons();
     });
   });
+
+  const showAllObjectsButton = document.getElementById('showAllObjectsButton') as HTMLButtonElement | null;
+  if (showAllObjectsButton) {
+    showAllObjectsButton.addEventListener('click', () => {
+      showAllObjects();
+    });
+  }
+
+  const hideAllObjectsButton = document.getElementById('hideAllObjectsButton') as HTMLButtonElement | null;
+  if (hideAllObjectsButton) {
+    hideAllObjectsButton.addEventListener('click', () => {
+      hideAllObjects();
+    });
+  }
+
+  const flightVisibilityModeSelect = document.getElementById('flightVisibilityMode') as HTMLSelectElement | null;
+  if (flightVisibilityModeSelect) {
+    flightVisibilityModeSelect.addEventListener('change', () => {
+      const mode = flightVisibilityModeSelect.value as FlightVisibilityMode;
+      if (mode === 'all' || mode === 'military' || mode === 'civilian') {
+        flightVisibilityState.mode = mode;
+        applyFlightVisibilityFilters();
+        setStatus(`Flight visibility mode: ${mode.toUpperCase()}`);
+      }
+    });
+  }
+
+  const flightAltitudeBandSelect = document.getElementById('flightAltitudeBand') as HTMLSelectElement | null;
+  if (flightAltitudeBandSelect) {
+    flightAltitudeBandSelect.addEventListener('change', () => {
+      const altitudeBand = flightAltitudeBandSelect.value as FlightAltitudeBand;
+      if (altitudeBand === 'all' || altitudeBand === 'low' || altitudeBand === 'mid' || altitudeBand === 'high') {
+        flightVisibilityState.altitudeBand = altitudeBand;
+        applyFlightVisibilityFilters();
+        setStatus(`Flight altitude filter: ${altitudeBand.toUpperCase()}`);
+      }
+    });
+  }
+
+  const staleTracksOnlyToggle = document.getElementById('staleTracksOnly') as HTMLInputElement | null;
+  if (staleTracksOnlyToggle) {
+    staleTracksOnlyToggle.addEventListener('change', () => {
+      flightVisibilityState.staleOnly = staleTracksOnlyToggle.checked;
+      applyFlightVisibilityFilters();
+      setStatus(`Stale-track filter: ${flightVisibilityState.staleOnly ? 'ON' : 'OFF'}`);
+    });
+  }
+
+  const resetVisibilityFiltersButton = document.getElementById('resetVisibilityFiltersButton') as HTMLButtonElement | null;
+  if (resetVisibilityFiltersButton) {
+    resetVisibilityFiltersButton.addEventListener('click', () => {
+      flightVisibilityState.mode = 'all';
+      flightVisibilityState.altitudeBand = 'all';
+      flightVisibilityState.staleOnly = false;
+      if (flightVisibilityModeSelect) {
+        flightVisibilityModeSelect.value = 'all';
+      }
+      if (flightAltitudeBandSelect) {
+        flightAltitudeBandSelect.value = 'all';
+      }
+      if (staleTracksOnlyToggle) {
+        staleTracksOnlyToggle.checked = false;
+      }
+      manuallyHiddenEntityIds.clear();
+      applyFlightVisibilityFilters();
+      setStatus('Visibility filters reset.');
+    });
+  }
 
   const shaderModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="shaderMode"]');
   shaderModeRadios.forEach((radio) => {

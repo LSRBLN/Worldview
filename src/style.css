@@ -332,6 +332,26 @@ button:hover {
   accent-color: var(--neon-primary);
 }
 
+.toolbar-section select {
+  width: 100%;
+  margin: 4px 0 8px;
+  border: 1px solid rgba(0, 255, 157, 0.5);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: rgba(0, 14, 7, 0.74);
+  color: #cbffe6;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.12);
+}
+
+.toolbar-section select:focus {
+  outline: none;
+  border-color: rgba(0, 255, 157, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 255, 157, 0.35), 0 0 12px rgba(0, 255, 157, 0.28);
+}
+
 .shader-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
