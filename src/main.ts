@@ -43,7 +43,7 @@ const apiAisText = document.getElementById('apiAisText');
 const incidentFeedList = document.getElementById('incidentFeedList') as HTMLDivElement | null;
 
 type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
-type FlightsFeedStatus = 'Initializing…' | 'OpenSky online' | 'Fallback active' | 'Replay/CZML fallback' | 'Error';
+type FlightsFeedStatus = 'Initializing…' | 'OpenSky online' | 'OpenSky fallback' | 'Replay/CZML fallback' | 'Error';
 type AisFeedStatus = 'Initializing…' | 'AIS live' | 'AIS fallback' | 'Error';
 
 type RuntimeDiagnosticsState = {
@@ -507,7 +507,6 @@ const arcgisBasemapStyle = (import.meta.env.VITE_ARCGIS_BASEMAP_STYLE as string 
 const openSkyBaseUrl = ((import.meta.env.VITE_OPENSKY_BASE_URL as string | undefined)?.trim() || 'https://opensky-network.org/api');
 const openSkyUsername = (import.meta.env.VITE_OPENSKY_USERNAME as string | undefined)?.trim();
 const openSkyPassword = (import.meta.env.VITE_OPENSKY_PASSWORD as string | undefined)?.trim();
-const adsbFallbackUrl = (import.meta.env.VITE_ADSB_FALLBACK_URL as string | undefined)?.trim();
 const aisWebSocketUrl = ((import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim() || 'wss://stream.aisstream.io/v0/stream');
 const aisWebSocketApiKey = (
   (import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined)?.trim()
@@ -639,7 +638,7 @@ function extractEntityMeta(entity: Cesium.Entity): EntityIntel {
 
   let layer = 'Unknown';
   if (id.includes('adsb') || id.includes('flight') || id.includes('iran-flight')) {
-    layer = 'ADS-B';
+    layer = 'OpenSky';
   } else if (id.includes('sat')) {
     layer = 'Satellite';
   } else if (id.includes('ais')) {
@@ -1501,14 +1500,15 @@ async function fetchLiveTleLines(): Promise<string[]> {
   return tleText.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
-const adsbFallbackSeeds = Array.from({ length: 18 }, (_, index) => {
-  const military = index % 4 === 0 || index % 7 === 0;
-  const ring = index % 9;
+const adsbFallbackSeeds = Array.from({ length: 24 }, (_, index) => {
+  const military = index % 5 === 0 || index % 7 === 0;
+  const ring = index % 12;
   return {
     id: `adsb-fallback-${index + 1}`,
     callsign: military ? `RECON-${200 + index}` : `GULF-${400 + index}`,
-    lon: 52.8 + ring * 0.85,
-    lat: 23.4 + (index % 6) * 0.95,
+    // Schwerpunkt Iran/Golf, damit Tracks im Standard-View sofort sichtbar sind.
+    lon: 48.8 + ring * 0.72,
+    lat: 26.1 + (index % 6) * 0.85,
     altitude: 4200 + (index % 8) * 900,
     speedKts: 240 + (index % 7) * 35,
     isMilitary: military
@@ -1543,12 +1543,24 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
     const colorHostile = Cesium.Color.fromCssColorString('#ff5a5a').withAlpha(0.96);
     const isMilitary = seed.isMilitary;
     const flightColor = isMilitary ? colorHostile : colorFriendly;
-    const fallbackPosition = new Cesium.CallbackPositionProperty((time?: Cesium.JulianDate) => {
-      const current = time ?? viewer.clock.currentTime;
-      const elapsed = Cesium.JulianDate.secondsDifference(current, viewer.clock.startTime);
-      const drift = ((elapsed + index * 260) % 2800) * 0.00008;
-      const lateral = Math.sin(elapsed * 0.0034 + index * 0.7) * 0.24;
-      return Cesium.Cartesian3.fromDegrees(seed.lon + drift, seed.lat + lateral, seed.altitude);
+    const fallbackPosition = new Cesium.CallbackPositionProperty(() => {
+      // Realtime-Drift auf Wall-Clock-Basis (nicht Timeline-basiert), damit Tracks
+      // nicht synchron vor/zurück oszillieren, sondern individuell "forward" laufen.
+      const nowSec = Date.now() / 1000;
+      const headingDeg = (index * 37 + 25) % 360;
+      const headingRad = Cesium.Math.toRadians(headingDeg);
+      const speedMs = Math.max(90, seed.speedKts * 0.514444 * 0.32);
+      const routeLengthM = 170_000 + (index % 5) * 45_000;
+      const distanceM = ((nowSec + index * 173) * speedMs) % routeLengthM;
+
+      const lat0 = seed.lat;
+      const lon0 = seed.lon;
+      const metersPerDegLat = 111_320;
+      const metersPerDegLon = Math.max(1, 111_320 * Math.cos(Cesium.Math.toRadians(lat0)));
+
+      const lat = lat0 + (Math.cos(headingRad) * distanceM) / metersPerDegLat;
+      const lon = lon0 + (Math.sin(headingRad) * distanceM) / metersPerDegLon;
+      return Cesium.Cartesian3.fromDegrees(lon, lat, seed.altitude);
     }, false);
 
     const entity = layerCollections.adsb.entities.add({
@@ -1560,7 +1572,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
         scale: 0.46,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         color: flightColor,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
       },
       path: {
         resolution: 120,
@@ -1578,7 +1590,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         pixelOffset: new Cesium.Cartesian2(8, -8),
         show: isMilitary,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
       },
       properties: {
         callsign: seed.callsign,
@@ -1617,49 +1629,9 @@ async function pollAdsbLayer(): Promise<void> {
       data = await openSkyApi.statesAll({ lamin: 24, lomin: 44, lamax: 40, lomax: 64 });
     } catch (openSkyError) {
       console.warn('[WorldView][Flights] OpenSky states/all fehlgeschlagen, nutze Fallback', openSkyError);
-      setHealth('OpenSky states/all unavailable • switching to fallback source');
-      activeFeedLabel = 'ADS-B Fallback';
-
-      if (adsbFallbackUrl) {
-        const fallbackResponse = await fetch(adsbFallbackUrl);
-        if (!fallbackResponse.ok) {
-          throw new Error(`ADS-B Fallback failed: HTTP ${fallbackResponse.status}`);
-        }
-
-        const rawFallback = (await fallbackResponse.json()) as {
-          states?: Array<(string | number | null)[]>;
-          aircraft?: Array<{
-            hex?: string;
-            lat?: number;
-            lon?: number;
-            alt_baro?: number;
-            flight?: string;
-          }>;
-        };
-
-        if (Array.isArray(rawFallback.states)) {
-          data = { states: rawFallback.states };
-        } else if (Array.isArray(rawFallback.aircraft)) {
-          data = {
-            states: rawFallback.aircraft.map((entry) => [
-              entry.hex ?? 'na',
-              entry.flight ?? 'UNKNOWN',
-              null,
-              null,
-              Math.floor(Date.now() / 1000),
-              entry.lon ?? null,
-              entry.lat ?? null,
-              entry.alt_baro ?? 0,
-              null,
-              null
-            ])
-          };
-        } else {
-          data = { states: [] };
-        }
-      } else {
-        throw openSkyError;
-      }
+      setHealth('OpenSky states/all unavailable • switching to OpenSky fallback');
+      activeFeedLabel = 'OpenSky fallback';
+      throw openSkyError;
     }
 
     const militaryTracks: Array<{ callsign: string; altitude: string; speed: string; source: string }> = [];
@@ -1763,7 +1735,7 @@ async function pollAdsbLayer(): Promise<void> {
             scale: 0.46,
             verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
             color: flightColor,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
           },
           path: {
             resolution: 120,
@@ -1781,7 +1753,7 @@ async function pollAdsbLayer(): Promise<void> {
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             pixelOffset: new Cesium.Cartesian2(8, -8),
             show: true,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
           },
           properties: {
             callsign,
@@ -1861,7 +1833,7 @@ async function pollAdsbLayer(): Promise<void> {
       });
     } else {
       updateRuntimeDiagnostics({
-        flightsFeed: activeFeedLabel === 'OpenSky' ? 'OpenSky online' : 'Fallback active',
+        flightsFeed: activeFeedLabel === 'OpenSky' ? 'OpenSky online' : 'OpenSky fallback',
         flightsDetail: `${activeFeedLabel} states/all • ${renderedFlights} flights rendered • ${adsbTrackRegistry.size} active tracks`
       });
     }
@@ -1881,7 +1853,7 @@ async function pollAdsbLayer(): Promise<void> {
       flightsFeed: 'Replay/CZML fallback',
       flightsDetail: 'Live feed unavailable (API/CORS/rate-limit) • Replay/CZML stays active'
     });
-    setHealth('Network: degraded • ADS-B feed temporarily unavailable');
+    setHealth('Network: degraded • OpenSky feed temporarily unavailable');
     markPollStatus('flights', 'fallback');
   }
 }
@@ -3005,37 +2977,20 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
     });
     setStatus('Google Photorealistic 3D Tiles active (direct Google API).');
   } catch (directError) {
-    console.warn('[WorldView][Tiles] Direkter API-Key Pfad fehlgeschlagen, versuche Cesium Helper', directError);
+    console.error('[WorldView][Tiles] Google Map Tiles API (direct) fehlgeschlagen', {
+      directError
+    });
 
-    try {
-      // Kostenfrei weil Free-Tier / GitHub Student Pack
-      const helperTileset = await Cesium.createGooglePhotorealistic3DTileset({
-        onlyUsingWithGoogleGeocoder: true
-      });
-      viewer.scene.primitives.add(helperTileset);
-      setSceneGlobeVisibility(false, 'google-helper-tileset-ready');
-      updateRuntimeDiagnostics({
-        tilesPath: 'Google Helper',
-        tilesDetail: 'Cesium Helper aktiv (Ion/Google-Bridge)'
-      });
-      setStatus('Google Photorealistic 3D Tiles active (Cesium helper).');
-    } catch (helperError) {
-      console.error('[WorldView][Tiles] Alle Google-Tile-Pfade fehlgeschlagen', {
-        directError,
-        helperError
-      });
-
-      ensureVisibleFreeTierGlobeFallback('Google Tiles fehlgeschlagen (Direct + Helper)');
-      // God’s Eye Original-Look – Bilawal-Video March 2026
-      // Klare Produktions-Hilfe für Vercel: exakt notwendige Env-Variable im HUD.
-      showTilesFallbackOverlay('Google Tiles nicht verfügbar. Setze in Vercel ENV exakt: VITE_GOOGLE_MAP_TILES_KEY=... (Map Tiles API Key). OSM-Fallback aktiv.');
-      updateRuntimeDiagnostics({
-        tilesPath: 'OSM Fallback',
-        tilesDetail: 'Google fehlgeschlagen (Key/Quota/Referrer). Benötigt: VITE_GOOGLE_MAP_TILES_KEY in Vercel.'
-      });
-      setStatus('Fallback active: globe visible, Google Tiles unavailable.');
-      setHealth('Network: degraded • Google Tiles fallback active');
-    }
+    ensureVisibleFreeTierGlobeFallback('Google Tiles fehlgeschlagen (Direct)');
+    // God’s Eye Original-Look – Bilawal-Video March 2026
+    // Klare Produktions-Hilfe für Vercel: exakt notwendige Env-Variable im HUD.
+    showTilesFallbackOverlay('Google Map Tiles API nicht verfügbar. Setze in Vercel ENV exakt: VITE_GOOGLE_MAP_TILES_KEY=... (Map Tiles API Key). OSM-Fallback aktiv.');
+    updateRuntimeDiagnostics({
+      tilesPath: 'OSM Fallback',
+      tilesDetail: 'Google Map Tiles API direct fehlgeschlagen (Key/Quota/Referrer). Benötigt: VITE_GOOGLE_MAP_TILES_KEY in Vercel.'
+    });
+    setStatus('Fallback active: globe visible, Google Map Tiles API unavailable.');
+    setHealth('Network: degraded • Google Tiles fallback active');
   }
 
   flyToPreset('hormuz');
