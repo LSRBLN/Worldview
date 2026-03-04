@@ -1692,6 +1692,148 @@ function setShaderMode(mode: ShaderMode): void {
   viewer.scene.requestRender();
 }
 
+// === START DIREKTE INTEGRATION ALLER LAYER ===
+const layerManager: Record<string, Cesium.DataSource | Cesium.Entity[]> = {};
+
+const flightsDataSource = new Cesium.CustomDataSource('Flights');
+viewer.dataSources.add(flightsDataSource);
+layerManager.flights = flightsDataSource;
+
+async function startOpenSkyPolling() {
+  setInterval(async () => {
+    try {
+      const res = await fetch('https://opensky-network.org/api/states/all');
+      const data = await res.json();
+      if (!data.states) return;
+      data.states.forEach((state: any) => {
+        const [icao24, callsign, , , , lon, lat, alt] = state;
+        if (!lon || !lat) return;
+        let entity = flightsDataSource.entities.getById(icao24);
+        if (!entity) {
+          entity = flightsDataSource.entities.add({
+            id: icao24,
+            position: Cesium.Cartesian3.fromDegrees(lon, lat, alt || 10000),
+            billboard: { image: '/assets/plane-blue.png', scale: 0.8 },
+            label: { text: callsign || icao24, font: '12px monospace', fillColor: Cesium.Color.CYAN }
+          });
+        } else {
+          entity.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(lon, lat, alt || 10000));
+        }
+      });
+    } catch (e) {
+      console.warn('[WorldView][OpenSky] Polling fehlgeschlagen', e);
+    }
+  }, 10000);
+}
+
+const aisDataSource = new Cesium.CustomDataSource('AIS Ships');
+viewer.dataSources.add(aisDataSource);
+layerManager.ais = aisDataSource;
+
+function startAISStream() {
+  const socket = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  const key = import.meta.env.VITE_AISSTREAM_API_KEY;
+  socket.onopen = () => socket.send(JSON.stringify({ APIKey: key, BoundingBoxes: [[[23.5, 55.0], [28.0, 58.0]]] }));
+  socket.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (![1, 2, 3].includes(msg.MessageType)) return;
+    const pos = msg.Message.PositionReport || msg.Message.EnhancedPositionReport;
+    const mmsi = msg.MetaData.MMSI.toString();
+    const name = (msg.MetaData.ShipName || 'Unknown').trim();
+    let entity = aisDataSource.entities.getById(mmsi);
+    if (!entity) {
+      entity = aisDataSource.entities.add({
+        id: mmsi,
+        position: Cesium.Cartesian3.fromDegrees(pos.Longitude, pos.Latitude, 0),
+        billboard: { image: '/assets/ship-icon.png', scale: 0.9 },
+        label: { text: name, font: '11px monospace' }
+      });
+    } else {
+      entity.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(pos.Longitude, pos.Latitude, 0));
+    }
+  };
+}
+
+const satellitesDataSource = new Cesium.CustomDataSource('Satellites');
+viewer.dataSources.add(satellitesDataSource);
+layerManager.satellites = satellitesDataSource;
+
+async function loadAllSatellitesWithOrbits() {
+  const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
+  const tleText = await res.text();
+  const lines = tleText.trim().split('\n');
+  for (let i = 0; i < lines.length; i += 3) {
+    if (!lines[i + 1] || !lines[i + 2]) continue;
+    const sat = twoline2satrec(lines[i + 1], lines[i + 2]);
+    if (!sat) continue;
+    const satrec = sat as SatRec;
+    const name = lines[i].trim();
+    const id = `sat-${name.replace(/\s/g, '')}`;
+    satellitesDataSource.entities.add({
+      id,
+      name,
+      position: new Cesium.CallbackPositionProperty(() => {
+        const now = new Date();
+        const gmst = gstime(now);
+        const propagation = propagate(satrec, now);
+        if (!propagation || !propagation.position) return Cesium.Cartesian3.ZERO;
+        const positionEci = propagation.position;
+        const positionGd = eciToGeodetic(positionEci, gmst);
+        return Cesium.Cartesian3.fromDegrees(
+          Cesium.Math.toDegrees(positionGd.longitude!),
+          Cesium.Math.toDegrees(positionGd.latitude!),
+          (positionGd.height ?? 0) * 1000
+        );
+      }, false),
+      point: { pixelSize: 6, color: Cesium.Color.YELLOW },
+      path: { resolution: 60, material: Cesium.Color.YELLOW.withAlpha(0.4), width: 1.5, leadTime: 3600, trailTime: 7200 }
+    });
+  }
+}
+
+const zonesDataSource = new Cesium.CustomDataSource('Zones');
+viewer.dataSources.add(zonesDataSource);
+layerManager.zones = zonesDataSource;
+
+zonesDataSource.entities.add({
+  polygon: {
+    hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray([55, 25, 58, 25, 58, 28, 55, 28])),
+    material: Cesium.Color.RED.withAlpha(0.25),
+    outline: true,
+    outlineColor: Cesium.Color.RED
+  }
+});
+zonesDataSource.entities.add({
+  polygon: {
+    hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray([50, 29, 63, 29, 63, 38, 50, 38])),
+    material: Cesium.Color.ORANGE.withAlpha(0.2),
+    outline: true,
+    outlineColor: Cesium.Color.ORANGE
+  }
+});
+
+function toggleLayer(layerName: string) {
+  const layer = layerManager[layerName];
+  if (layer instanceof Cesium.CustomDataSource) layer.show = !layer.show;
+}
+
+viewer.selectedEntityChanged.addEventListener((entity) => {
+  if (entity && confirm(`Objekt "${entity.name || entity.id}" ausblenden?`)) entity.show = false;
+});
+
+(window as unknown as { showAllEntities?: () => void; toggleLayer?: (name: string) => void }).showAllEntities = () => {
+  Object.values(layerManager).forEach((layer) => {
+    if (layer instanceof Cesium.CustomDataSource) layer.entities.values.forEach((e) => (e.show = true));
+  });
+};
+
+(window as unknown as { showAllEntities?: () => void; toggleLayer?: (name: string) => void }).toggleLayer = toggleLayer;
+
+void startOpenSkyPolling();
+startAISStream();
+void loadAllSatellitesWithOrbits();
+// === ENDE DIREKTE INTEGRATION ===
+
 function setLayerVisibility(layer: string, visible: boolean): void {
   if (!(layer in layerState)) {
     return;
