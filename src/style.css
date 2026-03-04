@@ -29,6 +29,9 @@ body,
   --hud-border: rgba(0, 255, 65, 0.5);
   --hud-glow: 0 0 8px rgba(0, 255, 65, 0.72), 0 0 18px rgba(0, 255, 65, 0.34);
   --hud-text-shadow: 0 0 7px rgba(0, 255, 65, 0.72), 0 0 14px rgba(0, 255, 65, 0.22);
+  --scanline-opacity: 0.14;
+  --scanline-speed: 7s;
+  --phosphor-strength: 0.1;
 }
 
 .mode-eo {
@@ -39,11 +42,14 @@ body,
 .mode-nvg {
   --accent-green: #5eff00;
   --accent-green-soft: #a6ff7a;
+  --phosphor-strength: 0.16;
 }
 
 .mode-flir {
   --accent-green: #50c9ff;
   --accent-green-soft: #a4e9ff;
+  --scanline-opacity: 0.12;
+  --phosphor-strength: 0.08;
 }
 
 .viewer {
@@ -66,7 +72,7 @@ body,
 .crt-overlay {
   z-index: 1010;
   mix-blend-mode: screen;
-  opacity: 0.18;
+  opacity: var(--scanline-opacity);
   background:
     repeating-linear-gradient(
       to bottom,
@@ -82,12 +88,12 @@ body,
       rgba(0, 0, 0, 0) 3px,
       rgba(0, 0, 0, 0) 6px
     );
-  animation: crt-scan 6s linear infinite;
+  animation: crt-scan var(--scanline-speed) linear infinite;
 }
 
 .phosphor-overlay {
   z-index: 1011;
-  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.1) 0%, rgba(0, 255, 65, 0) 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, var(--phosphor-strength)) 0%, rgba(0, 255, 65, 0) 72%);
   mix-blend-mode: color-dodge;
   animation: phosphor-breathe 4s ease-in-out infinite;
 }
@@ -135,6 +141,27 @@ body,
   letter-spacing: 0.13em;
   text-shadow: 0 0 12px rgba(255, 79, 79, 0.45);
   animation: top-secret-glitch 3.5s infinite;
+}
+
+.top-secret::before,
+.top-secret::after {
+  content: attr(data-label);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.top-secret::before {
+  color: #ff7080;
+  transform: translateX(-1px);
+  animation: top-secret-random-a 4.2s infinite steps(1, end);
+}
+
+.top-secret::after {
+  color: #74ffad;
+  transform: translateX(1px);
+  animation: top-secret-random-b 5.1s infinite steps(1, end);
 }
 
 .logo h1 {
@@ -547,6 +574,30 @@ button:hover {
   21% {
     opacity: 0.94;
     transform: translateX(1px);
+  }
+}
+
+@keyframes top-secret-random-a {
+  0%,
+  84%,
+  100% {
+    opacity: 0;
+  }
+  85%,
+  86% {
+    opacity: 0.34;
+  }
+}
+
+@keyframes top-secret-random-b {
+  0%,
+  92%,
+  100% {
+    opacity: 0;
+  }
+  93%,
+  94% {
+    opacity: 0.3;
   }
 }
 
