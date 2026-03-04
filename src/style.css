@@ -22,26 +22,26 @@ body,
 }
 
 :root {
-  --accent-green: #00ff41;
-  --accent-green-soft: #7dffb0;
+  --accent-green: #4db8ff;
+  --accent-green-soft: #9bd7ff;
   --classified-red: #ff3344;
-  --hud-bg: rgba(10, 20, 15, 0.35);
-  --hud-border: rgba(0, 255, 65, 0.5);
-  --hud-glow: 0 0 8px rgba(0, 255, 65, 0.72), 0 0 18px rgba(0, 255, 65, 0.34);
-  --hud-text-shadow: 0 0 7px rgba(0, 255, 65, 0.72), 0 0 14px rgba(0, 255, 65, 0.22);
+  --hud-bg: rgba(8, 18, 38, 0.5);
+  --hud-border: rgba(82, 156, 255, 0.6);
+  --hud-glow: 0 0 8px rgba(77, 184, 255, 0.72), 0 0 18px rgba(77, 184, 255, 0.34);
+  --hud-text-shadow: 0 0 7px rgba(77, 184, 255, 0.72), 0 0 14px rgba(77, 184, 255, 0.22);
   --scanline-opacity: 0.14;
   --scanline-speed: 7s;
   --phosphor-strength: 0.1;
 }
 
 .mode-eo {
-  --accent-green: #00ff41;
-  --accent-green-soft: #7dffb0;
+  --accent-green: #4db8ff;
+  --accent-green-soft: #9bd7ff;
 }
 
 .mode-nvg {
-  --accent-green: #5eff00;
-  --accent-green-soft: #a6ff7a;
+  --accent-green: #80d6ff;
+  --accent-green-soft: #c1ecff;
   --phosphor-strength: 0.16;
 }
 
@@ -56,8 +56,8 @@ body,
   /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   position: relative;
   box-shadow:
-    inset 0 0 140px rgba(43, 255, 184, 0.07),
-    0 0 40px rgba(43, 255, 184, 0.22);
+    inset 0 0 140px rgba(77, 184, 255, 0.1),
+    0 0 40px rgba(77, 184, 255, 0.2);
 }
 
 .crt-overlay,
@@ -76,15 +76,15 @@ body,
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(110, 255, 165, 0.13) 0px,
-      rgba(110, 255, 165, 0.13) 1px,
+      rgba(121, 190, 255, 0.13) 0px,
+      rgba(121, 190, 255, 0.13) 1px,
       rgba(0, 0, 0, 0) 2px,
       rgba(0, 0, 0, 0) 4px
     ),
     repeating-linear-gradient(
       to right,
-      rgba(100, 255, 155, 0.02) 0px,
-      rgba(100, 255, 155, 0.02) 1px,
+      rgba(121, 190, 255, 0.03) 0px,
+      rgba(121, 190, 255, 0.03) 1px,
       rgba(0, 0, 0, 0) 3px,
       rgba(0, 0, 0, 0) 6px
     );
@@ -93,7 +93,7 @@ body,
 
 .phosphor-overlay {
   z-index: 1011;
-  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, var(--phosphor-strength)) 0%, rgba(0, 255, 65, 0) 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(77, 184, 255, var(--phosphor-strength)) 0%, rgba(77, 184, 255, 0) 72%);
   mix-blend-mode: color-dodge;
   animation: phosphor-breathe 4s ease-in-out infinite;
 }
@@ -106,8 +106,8 @@ body,
 .reticle-grid {
   z-index: 1013;
   background-image:
-    linear-gradient(to right, rgba(0, 255, 65, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 255, 65, 0.045) 1px, transparent 1px);
+    linear-gradient(to right, rgba(77, 184, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(77, 184, 255, 0.06) 1px, transparent 1px);
   background-size: 82px 82px;
   mask-image: radial-gradient(circle at center, black 35%, transparent 90%);
   opacity: 0.35;
@@ -129,8 +129,8 @@ body,
   border: 1px solid var(--hud-border);
   background: var(--hud-bg);
   box-shadow:
-    inset 0 0 22px rgba(43, 255, 184, 0.12),
-    0 0 26px rgba(43, 255, 184, 0.18);
+    inset 0 0 22px rgba(77, 184, 255, 0.14),
+    0 0 26px rgba(77, 184, 255, 0.2);
   backdrop-filter: blur(6px) saturate(120%);
 }
 
@@ -194,7 +194,7 @@ body,
 
 .header-meta span {
   padding: 2px 7px;
-  border: 1px solid rgba(43, 255, 184, 0.26);
+  border: 1px solid rgba(77, 184, 255, 0.35);
   background: rgba(0, 14, 8, 0.4);
 }
 
@@ -211,8 +211,8 @@ body,
   background: var(--hud-bg);
   overflow: auto;
   box-shadow:
-    inset 0 0 25px rgba(43, 255, 184, 0.06),
-    0 0 20px rgba(43, 255, 184, 0.17);
+    inset 0 0 25px rgba(77, 184, 255, 0.1),
+    0 0 20px rgba(77, 184, 255, 0.18);
   backdrop-filter: blur(7px) saturate(120%);
 }
 
@@ -257,8 +257,8 @@ button,
 }
 
 button:hover {
-  background: rgba(43, 255, 184, 0.14);
-  box-shadow: inset 0 0 16px rgba(43, 255, 184, 0.16);
+  background: rgba(77, 184, 255, 0.16);
+  box-shadow: inset 0 0 16px rgba(77, 184, 255, 0.2);
   transform: translateY(-1px);
   cursor: pointer;
 }
@@ -274,7 +274,7 @@ button:hover {
 
 .toolbar-section input[type='checkbox'],
 .toolbar-section input[type='radio'] {
-  accent-color: #2bffb8;
+  accent-color: var(--accent-green);
 }
 
 .shader-mode-grid {
@@ -293,7 +293,7 @@ button:hover {
 
 #shaderIntensity {
   width: 100%;
-  filter: drop-shadow(0 0 4px rgba(43, 255, 184, 0.45));
+  filter: drop-shadow(0 0 4px rgba(77, 184, 255, 0.5));
 }
 
 #statusText,
