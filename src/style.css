@@ -44,6 +44,13 @@ body,
   box-shadow: inset 0 0 180px rgba(0, 255, 157, 0.07);
 }
 
+.three-hud-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1008;
+  pointer-events: none;
+}
+
 .crt-overlay,
 .phosphor-overlay,
 .vignette-overlay,

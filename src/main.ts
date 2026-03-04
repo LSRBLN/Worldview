@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import './style.css';
+import * as THREE from 'three';
+import { gsap } from 'gsap';
 import {
   twoline2satrec,
   propagate,
@@ -217,6 +219,8 @@ console.info('[WorldView][Boot] Container-Größe beim Start', {
 });
 
 const googleMapTilesKey = (import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined)?.trim();
+const arcgisApiKey = (import.meta.env.VITE_ARCGIS_API_KEY as string | undefined)?.trim();
+const arcgisBasemapStyle = (import.meta.env.VITE_ARCGIS_BASEMAP_STYLE as string | undefined)?.trim() || 'arcgis/light-gray';
 const aisWebSocketUrl = ((import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim() || 'wss://stream.aisstream.io/v0/stream');
 const aisWebSocketApiKey = (
   (import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined)?.trim()
@@ -535,24 +539,33 @@ function ensureVisibleFreeTierGlobeFallback(reason: string): void {
   }
 
   // God’s Eye Original-Look – Bilawal-Video March 2026
-  // Keine Paid-API: Ellipsoid-Terrain + OpenStreetMap-Imagery als garantiert sichtbarer Fallback.
+  // Keine Paid-API: Ellipsoid-Terrain + ArcGIS/OSM-Imagery als garantiert sichtbarer Fallback.
   viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
 
   try {
     viewer.imageryLayers.removeAll(true);
+    const arcgisImagery = new Cesium.UrlTemplateImageryProvider({
+      // Kostenfrei weil Free-Tier / GitHub Student Pack
+      // ArcGIS World Imagery Tile Endpoint (public basemap fallback).
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    });
+
+    activeFallbackImageryLayer = viewer.imageryLayers.addImageryProvider(arcgisImagery, 0);
+
+    console.info('[WorldView][Fallback] OSM-Imagery aktiv', {
+      imageryLayerCountAfter: viewer.imageryLayers.length,
+      hasActiveFallbackLayer: Boolean(activeFallbackImageryLayer),
+      fallbackProvider: 'ArcGIS World Imagery'
+    });
+  } catch (fallbackError) {
+    console.error('[WorldView][Fallback] ArcGIS-Imagery konnte nicht aktiviert werden, versuche OSM', fallbackError);
+
     activeFallbackImageryLayer = viewer.imageryLayers.addImageryProvider(
       new Cesium.OpenStreetMapImageryProvider({
         url: 'https://tile.openstreetmap.org/'
       }),
       0
     );
-
-    console.info('[WorldView][Fallback] OSM-Imagery aktiv', {
-      imageryLayerCountAfter: viewer.imageryLayers.length,
-      hasActiveFallbackLayer: Boolean(activeFallbackImageryLayer)
-    });
-  } catch (fallbackError) {
-    console.error('[WorldView][Fallback] OSM-Imagery konnte nicht aktiviert werden', fallbackError);
   }
 
   viewer.scene.requestRender();
@@ -1119,19 +1132,7 @@ async function pollCelestrakLayer(): Promise<void> {
       return;
     }
 
-    // Kostenfrei weil Free-Tier / GitHub Student Pack
-    const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
-    if (response.status === 429) {
-      setHealth('Rate-Limit Celestrak erkannt • nächster Poll verzögert');
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Celestrak Fehler: ${response.status}`);
-    }
-
-    const tleText = await response.text();
-    const lines = tleText.split('\n').map((line) => line.trim()).filter(Boolean);
+    const lines = await fetchLiveTleLines();
     const maxSatellites = Math.min(24, Math.floor(lines.length / 3));
 
     for (let i = 0; i < maxSatellites; i += 1) {
@@ -1156,6 +1157,59 @@ async function pollCelestrakLayer(): Promise<void> {
     setHealth('Network: degraded • Celestrak temporarily unavailable');
     markPollStatus('satellites', 'fallback');
   }
+}
+
+async function fetchLiveTleLines(): Promise<string[]> {
+  const tryIvan = async (): Promise<string[] | null> => {
+    try {
+      // Kostenfrei weil Free-Tier / GitHub Student Pack
+      // Alternative TLE-Quelle (Ivan Stanojevic API, GEO-fähig) mit tolerantem Parsing.
+      const response = await fetch('https://tle.ivanstanojevic.me/api/tle');
+      if (!response.ok) {
+        return null;
+      }
+      const payload = (await response.json()) as {
+        member?: Array<{
+          name?: string;
+          line1?: string;
+          line2?: string;
+          satelliteId?: number;
+          date?: string;
+        }>;
+      };
+      const entries = payload.member ?? [];
+      const parsed: string[] = [];
+      entries.slice(0, 60).forEach((entry) => {
+        if (!entry.line1 || !entry.line2) {
+          return;
+        }
+        parsed.push(entry.name ?? `NORAD-${entry.satelliteId ?? 'UNK'}`);
+        parsed.push(entry.line1.trim());
+        parsed.push(entry.line2.trim());
+      });
+      return parsed.length >= 3 ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const ivanLines = await tryIvan();
+  if (ivanLines) {
+    setHealth('Network: online • TLE source: ivanstanojevic.me');
+    return ivanLines;
+  }
+
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
+  if (response.status === 429) {
+    setHealth('Rate-Limit Celestrak erkannt • nächster Poll verzögert');
+    return [];
+  }
+  if (!response.ok) {
+    throw new Error(`Celestrak Fehler: ${response.status}`);
+  }
+  const tleText = await response.text();
+  return tleText.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
 async function pollAdsbLayer(): Promise<void> {
@@ -2255,6 +2309,80 @@ function bindInteractionHandlers(): void {
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
 
+function initThreeHudOverlay(): void {
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  // Three.js + GSAP Overlay für Command-Center Motion-Details.
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.className = 'three-hud-overlay';
+  document.body.appendChild(overlayCanvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: overlayCanvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  camera.position.z = 1;
+
+  const ringGeometry = new THREE.RingGeometry(0.45, 0.46, 96);
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff9d, transparent: true, opacity: 0.18 });
+  const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+  scene.add(ring);
+
+  const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff9d, transparent: true, opacity: 0.32 });
+  const linePoints = [
+    new THREE.Vector3(-0.95, -0.65, 0),
+    new THREE.Vector3(-0.15, -0.2, 0),
+    new THREE.Vector3(0.2, 0.0, 0),
+    new THREE.Vector3(0.95, 0.58, 0)
+  ];
+  const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+  const flowLine = new THREE.Line(lineGeometry, lineMaterial);
+  scene.add(flowLine);
+
+  gsap.to(ring.rotation, {
+    z: Math.PI * 2,
+    duration: 18,
+    repeat: -1,
+    ease: 'none'
+  });
+
+  gsap.to(ringMaterial, {
+    opacity: 0.32,
+    duration: 2.6,
+    yoyo: true,
+    repeat: -1,
+    ease: 'sine.inOut'
+  });
+
+  const render = () => {
+    renderer.render(scene, camera);
+    requestAnimationFrame(render);
+  };
+  render();
+
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+function addArcGisStaticBasemapOverlay(): void {
+  if (!arcgisApiKey) {
+    return;
+  }
+
+  try {
+    // Kostenfrei weil Free-Tier / GitHub Student Pack
+    // ArcGIS Static Basemap Tiles (optional Overlay; key in env).
+    const provider = new Cesium.UrlTemplateImageryProvider({
+      url: `https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1/${arcgisBasemapStyle}/{z}/{x}/{y}?token=${arcgisApiKey}`
+    });
+    viewer.imageryLayers.addImageryProvider(provider, 1);
+  } catch (error) {
+    console.warn('[WorldView][ArcGIS] Static basemap overlay konnte nicht initialisiert werden', error);
+  }
+}
+
 async function addGooglePhotorealisticTiles(): Promise<void> {
   const showTilesFallbackOverlay = (details: string): void => {
     const id = 'tilesFallbackBanner';
@@ -2362,6 +2490,7 @@ function startRateLimitedPollers(): void {
 bindToolbarEvents();
 bindTopModeSwitch();
 bindInteractionHandlers();
+initThreeHudOverlay();
 createBottomLayerBar();
 setShaderMode('none');
 setShaderIntensity(0.65);
@@ -2378,4 +2507,5 @@ startAisLiveFeed();
 void loadDemoReplayFromPublicData();
 void loadReplayData();
 startRateLimitedPollers();
+addArcGisStaticBasemapOverlay();
 void addGooglePhotorealisticTiles();
