@@ -1,5 +1,40 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&family=VT323&display=swap');
 
+:root {
+  --accent-green: #4db8ff;
+  --accent-green-soft: #b5deff;
+  --classified-red: #ff3344;
+  --hud-bg: rgba(8, 18, 38, 0.5);
+  --hud-border: rgba(82, 156, 255, 0.6);
+  --hud-glow: 0 0 8px rgba(77, 184, 255, 0.75), 0 0 18px rgba(77, 184, 255, 0.35);
+  --hud-text-shadow: 0 0 8px rgba(77, 184, 255, 0.72), 0 0 14px rgba(77, 184, 255, 0.2);
+  --scanline-opacity: 0.14;
+  --scanline-speed: 7s;
+  --phosphor-strength: 0.11;
+  --reticle-color: rgba(77, 184, 255, 0.06);
+}
+
+.mode-eo {
+  --accent-green: #4db8ff;
+  --accent-green-soft: #b5deff;
+  --reticle-color: rgba(77, 184, 255, 0.06);
+}
+
+.mode-nvg {
+  --accent-green: #80d6ff;
+  --accent-green-soft: #d7efff;
+  --phosphor-strength: 0.16;
+  --reticle-color: rgba(128, 214, 255, 0.07);
+}
+
+.mode-flir {
+  --accent-green: #5bb9ff;
+  --accent-green-soft: #b5deff;
+  --scanline-opacity: 0.12;
+  --phosphor-strength: 0.08;
+  --reticle-color: rgba(91, 185, 255, 0.08);
+}
+
 html,
 body,
 #app {
