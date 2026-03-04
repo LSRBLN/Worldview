@@ -67,12 +67,19 @@ const viewer = new Cesium.Viewer(container, {
   maximumRenderTimeChange: Infinity
 });
 
+// Kostenfrei weil Free-Tier / GitHub Student Pack
+// Original Timeline & Replay-Fenster (God's Eye Stil)
+viewer.timeline.zoomTo(
+  Cesium.JulianDate.fromIso8601('2026-03-01T00:00:00Z'),
+  Cesium.JulianDate.fromIso8601('2026-03-02T00:00:00Z')
+);
+
 if (viewer.scene.skyAtmosphere) {
   viewer.scene.skyAtmosphere.show = true;
 }
 viewer.scene.globe.show = false;
 viewer.scene.fog.enabled = true;
-viewer.clock.multiplier = 60;
+viewer.clock.multiplier = 300;
 viewer.clock.shouldAnimate = true;
 
 // Kostenfrei weil Free-Tier / GitHub Student Pack
@@ -364,6 +371,47 @@ function downloadReplayExport(): void {
   URL.revokeObjectURL(url);
 
   setStatus('Replay-CZML Export wurde heruntergeladen.');
+}
+
+function createBottomLayerBar(): void {
+  const bar = document.createElement('div');
+  bar.className = 'layer-bar';
+  bar.innerHTML = `
+    <button type="button" data-bottom-layer="adsb">✈️ Commercial & Military Flights</button>
+    <button type="button" data-bottom-layer="satellites">🛰️ Imaging Satellites</button>
+    <button type="button" data-bottom-layer="ais">🚢 Maritime Traffic</button>
+    <button type="button" data-bottom-layer="jamming">📡 GPS Jamming</button>
+  `;
+
+  bar.querySelectorAll<HTMLButtonElement>('button[data-bottom-layer]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const layer = button.dataset.bottomLayer;
+      if (!layer) {
+        return;
+      }
+
+      const nextState = !layerState[layer];
+      setLayerVisibility(layer, nextState);
+      button.style.opacity = nextState ? '1' : '0.45';
+
+      const checkbox = document.querySelector<HTMLInputElement>(`input[data-layer="${layer}"]`);
+      if (checkbox) {
+        checkbox.checked = nextState;
+      }
+    });
+  });
+
+  document.body.appendChild(bar);
+}
+
+async function loadDemoReplayFromPublicData(): Promise<void> {
+  try {
+    const demoCzml = await Cesium.CzmlDataSource.load('/data/iran-demo.czml');
+    viewer.dataSources.add(demoCzml);
+    setStatus('Demo-Replay geladen: iran-demo.czml');
+  } catch (error) {
+    console.warn('Demo-CZML konnte nicht geladen werden', error);
+  }
 }
 
 const liveSatellites = new Map<string, { satrec: SatRec; entity: Cesium.Entity }>();
@@ -713,6 +761,12 @@ function setShaderIntensity(intensity: number): void {
 function setShaderMode(mode: ShaderMode): void {
   activeShaderMode = mode;
 
+  if (mode === 'flir') {
+    // Kostenfrei weil Free-Tier / GitHub Student Pack
+    // Stärkeres Thermal-Profil wie im Original-Look.
+    flirStage.uniforms.u_intensity = 1.8;
+  }
+
   const shadersEnabled = layerState.shaders;
   crtStage.enabled = shadersEnabled && mode === 'crt';
   nvgStage.enabled = shadersEnabled && mode === 'nvg';
@@ -871,12 +925,14 @@ function startRateLimitedPollers(): void {
 }
 
 bindToolbarEvents();
+createBottomLayerBar();
 setShaderMode('none');
 setShaderIntensity(0.65);
 buildAisFallbackLayer();
 buildJammingLayerFromReplay();
 setStatus('Viewer initialisiert. Lade Google 3D Tiles…');
 setHealth(navigator.onLine ? 'Netzwerk: online' : 'Netzwerk: offline');
+void loadDemoReplayFromPublicData();
 void loadReplayData();
 startRateLimitedPollers();
 void addGooglePhotorealisticTiles();

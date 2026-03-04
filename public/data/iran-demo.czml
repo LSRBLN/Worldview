@@ -1,0 +1,124 @@
+[
+  {
+    "id": "document",
+    "name": "PhönixVision Iran Demo Replay",
+    "version": "1.0",
+    "clock": {
+      "interval": "2026-03-01T00:00:00Z/2026-03-02T00:00:00Z",
+      "currentTime": "2026-03-01T04:00:00Z",
+      "multiplier": 300,
+      "range": "LOOP_STOP",
+      "step": "SYSTEM_CLOCK_MULTIPLIER"
+    }
+  },
+  {
+    "id": "iran-flight-1",
+    "availability": "2026-03-01T02:00:00Z/2026-03-01T09:00:00Z",
+    "billboard": {
+      "image": "https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/plane-blue.png",
+      "scale": 0.45,
+      "verticalOrigin": "BOTTOM"
+    },
+    "path": {
+      "resolution": 120,
+      "leadTime": 1800,
+      "trailTime": 1800,
+      "width": 1.5,
+      "material": {
+        "solidColor": {
+          "color": {
+            "rgba": [0, 220, 255, 220]
+          }
+        }
+      }
+    },
+    "position": {
+      "epoch": "2026-03-01T00:00:00Z",
+      "cartographicDegrees": [
+        7200, 50.7, 32.4, 7800,
+        9000, 51.8, 33.2, 8200,
+        10800, 53.2, 34.0, 8600,
+        12600, 54.5, 34.5, 9000,
+        14400, 56.0, 35.1, 9400
+      ]
+    },
+    "properties": {
+      "callsign": "PV-IRN-001"
+    }
+  },
+  {
+    "id": "iran-flight-2",
+    "availability": "2026-03-01T03:00:00Z/2026-03-01T11:00:00Z",
+    "billboard": {
+      "image": "https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/plane-red.png",
+      "scale": 0.45,
+      "verticalOrigin": "BOTTOM"
+    },
+    "path": {
+      "resolution": 120,
+      "leadTime": 1800,
+      "trailTime": 1800,
+      "width": 1.5,
+      "material": {
+        "solidColor": {
+          "color": {
+            "rgba": [255, 60, 60, 220]
+          }
+        }
+      }
+    },
+    "position": {
+      "epoch": "2026-03-01T00:00:00Z",
+      "cartographicDegrees": [
+        10800, 47.8, 29.6, 7100,
+        12600, 48.9, 30.4, 7500,
+        14400, 50.1, 31.1, 7900,
+        16200, 51.4, 31.8, 8200,
+        18000, 52.8, 32.7, 8600
+      ]
+    },
+    "properties": {
+      "callsign": "PV-IRN-002"
+    }
+  },
+  {
+    "id": "sat-usa-234-demo",
+    "availability": "2026-03-01T00:00:00Z/2026-03-01T12:00:00Z",
+    "point": {
+      "pixelSize": 7,
+      "color": {
+        "rgba": [255, 255, 0, 255]
+      }
+    },
+    "label": {
+      "text": "USA-234",
+      "font": "11pt monospace",
+      "fillColor": {
+        "rgba": [255, 255, 0, 255]
+      }
+    },
+    "path": {
+      "resolution": 120,
+      "leadTime": 2400,
+      "trailTime": 2400,
+      "width": 1.2,
+      "material": {
+        "solidColor": {
+          "color": {
+            "rgba": [255, 255, 0, 190]
+          }
+        }
+      }
+    },
+    "position": {
+      "epoch": "2026-03-01T00:00:00Z",
+      "cartographicDegrees": [
+        0, 45.6, 28.5, 430000,
+        3600, 48.2, 30.2, 431000,
+        7200, 51.1, 31.7, 432000,
+        10800, 54.0, 33.1, 432500,
+        14400, 56.5, 34.6, 433000
+      ]
+    }
+  }
+]

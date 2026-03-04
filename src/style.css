@@ -6,51 +6,96 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #05070a;
-  color: #d8e6ff;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #000;
+  color: #00ff9d;
+  font-family: 'Courier New', monospace;
+}
+
+body,
+#cesiumContainer {
+  background: #000;
+  font-family: 'Courier New', monospace;
+  color: #00ff9d;
+  overflow: hidden;
+}
+
+.viewer {
+  box-shadow: 0 0 40px rgba(0, 255, 157, 0.3);
+}
+
+.header {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  text-align: center;
+  pointer-events: none;
+}
+
+.logo {
+  padding: 6px 18px;
+  border: 1px solid rgba(0, 255, 157, 0.55);
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 0 18px rgba(0, 255, 157, 0.2);
+}
+
+.top-secret {
+  display: block;
+  color: #ff5f5f;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+
+.logo h1 {
+  margin: 2px 0;
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #00ff9d;
+  text-shadow: 0 0 12px rgba(0, 255, 157, 0.75);
+}
+
+.gods-eye {
+  display: block;
+  color: #8fffd0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
 }
 
 #toolbar {
   position: absolute;
-  top: 12px;
+  top: 90px;
   left: 12px;
-  z-index: 50;
-  width: 320px;
-  max-height: calc(100vh - 24px);
+  z-index: 1050;
+  width: 330px;
+  max-height: calc(100vh - 165px);
   padding: 14px;
-  border: 1px solid #2a3140;
-  border-radius: 12px;
-  background: rgba(8, 13, 20, 0.76);
-  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 255, 157, 0.5);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.82);
   overflow: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-}
-
-.toolbar-header h1 {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: 0.04em;
-}
-
-.toolbar-header p {
-  margin: 4px 0 0;
-  color: #96a8c4;
-  font-size: 12px;
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.17);
 }
 
 .toolbar-section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #243046;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 255, 157, 0.24);
+}
+
+.toolbar-section:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .toolbar-section h2 {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #9ec2ff;
+  letter-spacing: 0.09em;
+  color: #00ff9d;
 }
 
 .button-row {
@@ -59,33 +104,32 @@ body,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.button-row button {
-  appearance: none;
-  border: 1px solid #31486c;
-  border-radius: 8px;
-  background: #10233f;
-  color: #d9e7ff;
-  padding: 8px 10px;
-  font-size: 12px;
-  cursor: pointer;
+button,
+.toggle {
+  background: transparent;
+  border: 1px solid #00ff9d;
+  color: #00ff9d;
+  text-shadow: 0 0 8px #00ff9d;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
-.button-row button:hover {
-  border-color: #4d74af;
-  background: #17315a;
+button:hover {
+  background: rgba(0, 255, 157, 0.1);
+  cursor: pointer;
 }
 
 .toolbar-section label {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
+  font-size: 12px;
   margin-bottom: 6px;
 }
 
 .toolbar-section input[type='checkbox'],
 .toolbar-section input[type='radio'] {
-  accent-color: #6ca0ff;
+  accent-color: #00ff9d;
 }
 
 .shader-mode-grid {
@@ -99,52 +143,52 @@ body,
   margin-top: 8px;
   margin-bottom: 4px;
   font-size: 12px;
-  color: #a8bddf;
+  color: #8fffd0;
 }
 
 #shaderIntensity {
   width: 100%;
 }
 
-#statusText {
-  margin: 0;
-  font-size: 12px;
-  color: #b6c7e4;
-  line-height: 1.45;
-}
-
-#healthText {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #9dc0ff;
-}
-
-#exportReplayButton {
-  appearance: none;
-  border: 1px solid #44679d;
-  border-radius: 8px;
-  background: #17315a;
-  color: #e4efff;
-  padding: 8px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  width: 100%;
-}
-
-#exportReplayButton:hover {
-  background: #1f3f74;
-}
-
+#statusText,
+#healthText,
 .attribution-text {
   margin: 0;
   font-size: 11px;
   line-height: 1.45;
-  color: #9fb3d4;
+  color: #8fffd0;
+}
+
+#healthText {
+  margin-top: 6px;
+}
+
+#exportReplayButton {
+  width: 100%;
 }
 
 #cesiumContainer {
   width: 100%;
   height: 100%;
+}
+
+.cesium-timeline {
+  background: rgba(0, 0, 0, 0.95) !important;
+  border-top: 2px solid #00ff9d;
+}
+
+.layer-bar {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  padding: 8px 20px;
+  border: 1px solid #00ff9d;
+  border-radius: 4px;
+  display: flex;
+  gap: 12px;
+  z-index: 1200;
 }
 
 .cesium-viewer-bottom {
@@ -154,6 +198,21 @@ body,
 @media (max-width: 900px) {
   #toolbar {
     width: calc(100vw - 24px);
-    max-height: 46vh;
+    max-height: 45vh;
+  }
+
+  .header {
+    top: 6px;
+  }
+
+  .logo h1 {
+    font-size: 18px;
+  }
+
+  .layer-bar {
+    width: calc(100vw - 24px);
+    left: 12px;
+    transform: none;
+    overflow-x: auto;
   }
 }
