@@ -40,6 +40,7 @@ const clearanceText = document.getElementById('clearanceText');
 const apiTilesText = document.getElementById('apiTilesText');
 const apiFlightsText = document.getElementById('apiFlightsText');
 const apiAisText = document.getElementById('apiAisText');
+const incidentFeedList = document.getElementById('incidentFeedList') as HTMLDivElement | null;
 
 type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
 type FlightsFeedStatus = 'Initializing…' | 'OpenSky online' | 'Fallback active' | 'Replay/CZML fallback' | 'Error';
@@ -59,6 +60,13 @@ type PollStatus = {
   satellites: string;
   ais: string;
   updatedAt: string;
+};
+
+type IncidentSeverity = 'INFO' | 'WARN' | 'ALERT';
+type IncidentEntry = {
+  time: string;
+  severity: IncidentSeverity;
+  text: string;
 };
 
 const planeBlueIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#ffd24a" d="M31 2l6 20 19 7v6l-19-2-2 9 7 8v5l-10-5-10 5v-5l7-8-2-9-19 2v-6l19-7 6-20z"/></svg>`;
@@ -93,6 +101,43 @@ const pollStatus: PollStatus = {
   ais: 'init',
   updatedAt: '—'
 };
+
+const incidentFeed: IncidentEntry[] = [];
+
+function triggerHudAlertPulse(severity: IncidentSeverity): void {
+  if (!appRoot || severity !== 'ALERT') {
+    return;
+  }
+  appRoot.classList.add('hud-alert');
+  window.setTimeout(() => {
+    appRoot.classList.remove('hud-alert');
+  }, 1300);
+}
+
+function renderIncidentFeed(): void {
+  if (!incidentFeedList) {
+    return;
+  }
+
+  if (incidentFeed.length === 0) {
+    incidentFeedList.innerHTML = '<p>INIT // Tactical feed online…</p>';
+    return;
+  }
+
+  incidentFeedList.innerHTML = incidentFeed.map((entry) => {
+    return `<p>[${entry.time}] ${entry.severity} // ${entry.text}</p>`;
+  }).join('');
+}
+
+function pushIncident(text: string, severity: IncidentSeverity = 'INFO'): void {
+  const time = new Date().toISOString().slice(11, 19);
+  incidentFeed.unshift({ time, severity, text });
+  if (incidentFeed.length > 12) {
+    incidentFeed.length = 12;
+  }
+  renderIncidentFeed();
+  triggerHudAlertPulse(severity);
+}
 
 function ensureRuntimeDiagnosticsHud(): HTMLDivElement {
   // God’s Eye Original-Look – Bilawal-Video March 2026
@@ -169,6 +214,10 @@ function initHudTelemetryTicker(): void {
     }
     if (clearanceText) {
       clearanceText.textContent = 'CLEARANCE: TS/SCI';
+    }
+
+    if (now.getUTCSeconds() % 25 === 0) {
+      pushIncident('Sensor sweep synchronized across active layers', 'INFO');
     }
   };
 
@@ -1381,6 +1430,7 @@ async function pollCelestrakLayer(): Promise<void> {
 
     setStatus('Live satellites updated (Celestrak free feed).');
     setHealth('Network: online • Celestrak nominal');
+    pushIncident(`Satellite sweep refreshed (${liveSatellites.size} tracks)`, 'INFO');
     markPollStatus('satellites', 'ok');
     viewer.scene.requestRender();
   } catch (error) {
@@ -1443,11 +1493,19 @@ async function fetchLiveTleLines(): Promise<string[]> {
   return tleText.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
-const adsbFallbackSeeds = [
-  { id: 'adsb-fallback-1', callsign: 'QESHM-CTRL-01', lon: 56.28, lat: 26.46, altitude: 6200, speedKts: 280, isMilitary: true },
-  { id: 'adsb-fallback-2', callsign: 'GULF-AIR-22', lon: 56.72, lat: 26.12, altitude: 8400, speedKts: 410, isMilitary: false },
-  { id: 'adsb-fallback-3', callsign: 'ORBIT-RECON-5', lon: 55.84, lat: 25.96, altitude: 9800, speedKts: 455, isMilitary: true }
-] as const;
+const adsbFallbackSeeds = Array.from({ length: 18 }, (_, index) => {
+  const military = index % 4 === 0 || index % 7 === 0;
+  const ring = index % 9;
+  return {
+    id: `adsb-fallback-${index + 1}`,
+    callsign: military ? `RECON-${200 + index}` : `GULF-${400 + index}`,
+    lon: 55.6 + ring * 0.19,
+    lat: 25.5 + (index % 6) * 0.22,
+    altitude: 4200 + (index % 8) * 900,
+    speedKts: 240 + (index % 7) * 35,
+    isMilitary: military
+  };
+});
 
 function clearAdsbFallbackTracks(): void {
   adsbFallbackSeeds.forEach((seed) => {
@@ -1531,6 +1589,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
   });
 
   applyFlightVisibilityFilters();
+  pushIncident(`Fallback air picture active (${adsbFallbackSeeds.length} synthetic tracks)`, 'WARN');
 }
 
 async function pollAdsbLayer(): Promise<void> {
@@ -1746,6 +1805,9 @@ async function pollAdsbLayer(): Promise<void> {
     }
 
     renderMilitaryInfoPanel(militaryTracks);
+    if (militaryTracks.length > 0) {
+      pushIncident(`Military correlation: ${militaryTracks.length} active tracks`, 'ALERT');
+    }
 
     if (renderedFlights === 0) {
       // God’s Eye Original-Look – Bilawal-Video March 2026
@@ -1772,6 +1834,7 @@ async function pollAdsbLayer(): Promise<void> {
     // Produktions-Hardening: Bei API/CORS/Rate-Limit Fehlern bleibt mindestens Replay/CZML-Flugverkehr sichtbar.
     upsertAdsbFallbackTracks('Offline fallback');
     setDataSourceVisibility(replaySources.adsb, true);
+    pushIncident('OpenSky unavailable • fallback tactical air picture engaged', 'WARN');
     updateRuntimeDiagnostics({
       flightsFeed: 'Replay/CZML fallback',
       flightsDetail: 'Live feed unavailable (API/CORS/rate-limit) • Replay/CZML stays active'
@@ -2095,6 +2158,7 @@ function switchToAisFallback(reason: string): void {
     aisDetail: reason
   });
   setStatus('AIS fallback mode active (local simulation).');
+  pushIncident('AIS live link lost • fallback maritime simulation active', 'WARN');
   markPollStatus('ais', 'fallback');
   viewer.scene.requestRender();
 }
@@ -2191,6 +2255,9 @@ function startAisLiveFeed(): void {
       aisDetail: `WebSocket live • ${liveAisTracks.size} vessels visible`
     });
     setStatus('AIS Live-Feed aktiv.');
+    if (liveAisTracks.size > 6) {
+      pushIncident(`Maritime feed dense: ${liveAisTracks.size} vessels in AOI`, 'INFO');
+    }
     markPollStatus('ais', 'ok');
     viewer.scene.requestRender();
   });
@@ -2519,6 +2586,16 @@ function flyToPreset(preset: CameraPresetKey): void {
     },
     duration: 2.2
   });
+
+  if (preset === 'hormuz') {
+    setShaderMode('crt');
+    pushIncident('Scenario preset HORMUZ // maritime choke-point monitoring', 'INFO');
+  }
+
+  if (preset === 'tehran' || preset === 'natanz') {
+    setShaderMode('nvg');
+    pushIncident(`Scenario preset ${preset.toUpperCase()} // high-priority land AOI`, 'ALERT');
+  }
 }
 
 function bindToolbarEvents(): void {
@@ -2957,6 +3034,7 @@ setHealth(navigator.onLine ? 'Network: online' : 'Network: offline');
 renderRuntimeDiagnosticsHud();
 renderPollingIndicator();
 renderEntityInfoPanel(null);
+renderIncidentFeed();
 initHudTelemetryTicker();
 startAisLiveFeed();
 void loadDemoReplayFromPublicData();

@@ -483,7 +483,7 @@ button:hover {
 .military-info-panel {
   position: fixed;
   right: 12px;
-  top: 170px;
+  top: 330px;
   z-index: 1250;
   width: min(340px, calc(100vw - 24px));
   padding: 10px 12px;
@@ -510,12 +510,59 @@ button:hover {
 
 .runtime-diagnostics-hud {
   position: fixed;
-  top: 220px;
+  top: 170px;
   z-index: 1240;
   width: min(430px, calc(100vw - 24px));
   padding: 10px 12px;
   color: #c8ffe5;
   font-size: 12px;
+}
+
+.incident-feed-panel {
+  position: fixed;
+  right: 12px;
+  top: 170px;
+  z-index: 1251;
+  width: min(340px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 255, 157, 0.72);
+  border-radius: 9px;
+  background: rgba(0, 18, 10, 0.78);
+  box-shadow: var(--hud-shadow);
+  color: #d9ffef;
+}
+
+.incident-feed-panel h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.incident-feed-list {
+  display: grid;
+  gap: 4px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.incident-feed-list p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  padding: 2px 4px;
+  border: 1px solid rgba(0, 255, 157, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.viewer.hud-alert .logo,
+.viewer.hud-alert .layer-bar,
+.viewer.hud-alert .polling-indicator {
+  box-shadow:
+    0 0 14px rgba(255, 60, 75, 0.52),
+    0 0 30px rgba(255, 60, 75, 0.28),
+    inset 0 0 20px rgba(255, 60, 75, 0.12);
+  border-color: rgba(255, 80, 95, 0.9);
 }
 
 .runtime-diagnostics-hud .runtime-detail {
