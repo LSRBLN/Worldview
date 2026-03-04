@@ -28,6 +28,7 @@ const fullscreenButton = document.getElementById('fullscreenButton') as HTMLButt
 const hoverInfo = document.getElementById('hoverInfo') as HTMLDivElement | null;
 const entityInfoPanel = document.getElementById('entityInfoPanel') as HTMLDivElement | null;
 const pollingIndicator = document.getElementById('pollingIndicator') as HTMLDivElement | null;
+const appRoot = document.getElementById('app');
 
 type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
 type FlightsFeedStatus = 'Initialisiere…' | 'OpenSky ok' | 'Fallback aktiv' | 'Demo/CZML Fallback' | 'Fehler';
@@ -168,13 +169,36 @@ console.info('[WorldView][Env][Prod-Diagnose]', {
 function setStatus(message: string): void {
   if (statusText) {
     statusText.textContent = message;
+    statusText.classList.remove('status-typewriter');
+    void statusText.offsetWidth;
+    statusText.classList.add('status-typewriter');
   }
 }
 
 function setHealth(message: string): void {
   if (healthText) {
     healthText.textContent = message;
+    healthText.classList.remove('status-typewriter');
+    void healthText.offsetWidth;
+    healthText.classList.add('status-typewriter');
   }
+}
+
+function setHudModeClass(mode: ShaderMode): void {
+  if (!appRoot) {
+    return;
+  }
+
+  appRoot.classList.remove('mode-eo', 'mode-nvg', 'mode-flir');
+  if (mode === 'nvg') {
+    appRoot.classList.add('mode-nvg');
+    return;
+  }
+  if (mode === 'flir') {
+    appRoot.classList.add('mode-flir');
+    return;
+  }
+  appRoot.classList.add('mode-eo');
 }
 
 type CameraPresetKey = 'hormuz' | 'iran' | 'tehran' | 'natanz';
@@ -1630,6 +1654,7 @@ function setShaderIntensity(intensity: number): void {
 
 function setShaderMode(mode: ShaderMode): void {
   activeShaderMode = mode;
+  setHudModeClass(mode);
 
   const shadersEnabled = layerState.shaders;
   // God’s Eye Original-Look – Bilawal-Video March 2026
