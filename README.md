@@ -1,4 +1,4 @@
-# WorldView (God’s Eye) – CesiumJS Free-Tier Build
+# StratoNova – CesiumJS Free-Tier Build
 
 Statischer Browser-Client mit CesiumJS + Google Photorealistic 3D Tiles + CZML-Replay + OSINT-Layern.
 
@@ -34,8 +34,103 @@ Wichtige Variablen:
 - `VITE_CESIUM_ION_TOKEN`
 - `VITE_GOOGLE_MAP_TILES_KEY`
 - `VITE_ADSB_FALLBACK_URL`
-- `VITE_AIS_WS_URL` (optional für AIS Live-Websocket)
-- `VITE_AIS_WS_API_KEY` (optional, falls der AIS-Provider Auth benötigt)
+- `VITE_AISSTREAM_API_KEY` (primär; API-Key für AISStream Live-Feed)
+- `VITE_AIS_WS_API_KEY` (Legacy-Fallback; wird genutzt, wenn `VITE_AISSTREAM_API_KEY` nicht gesetzt ist)
+- `VITE_AIS_WS_URL` (optional; Provider-spezifische WebSocket-URL für Legacy/Fallback)
+
+## AIS Quellen & Lizenz/Nutzung
+
+### Primärquelle: AISStream
+
+- Standardquelle für Live-AIS im Viewer.
+- Authentifizierung per `VITE_AISSTREAM_API_KEY`.
+- Nutzung nur gemäß aktueller AISStream ToS/Lizenz (insbesondere Weitergabe/Redistribution und zulässige Use-Cases prüfen).
+- Default-Betriebsmodus ist **Bounding-Box-only** (regionale Subscription statt globalem Firehose-Feed).
+
+### Optionaler Fallback: AISHub
+
+- Nur als Ausweichpfad bei Ausfall/Rate-Limit/Auth-Problemen der Primärquelle.
+- Nutzung nur gemäß AISHub ToS; erforderliche Attribution im Produkt/Projekt dokumentieren.
+- Kein permanenter Parallelbetrieb mit Primärquelle, außer für gezielte Diagnosefenster.
+
+### Historisches Replay: NOAA/CSV
+
+- Historische AIS-Replays basieren auf extern beschafften CSV-Dateien (z. B. NOAA-Datensätze).
+- Rohdaten werden **nicht** im Repository versioniert oder mitgeliefert.
+- Verarbeitung erfolgt lokal/auf Worker über [`tools/czml_generator.py`](Worldview/tools/czml_generator.py).
+
+### Betriebsgrenzen (verbindlich)
+
+- Keine globale Standard-Subscription als Default-Konfiguration.
+- Rate-limit-schonender Betrieb: regionale Filter, kontrollierte Reconnect-Strategie, Backoff bei Fehlern.
+- Bei ToS-/Quota-Verletzungsrisiko muss der Feed auf Fallback oder Replay-only reduziert werden.
+
+## AIS Validierung
+
+Die folgenden Prüfungen sind als operatives Validierungskonzept für die AIS-Kette definiert (Live und Replay).
+
+### 1) Live-Health
+
+Prüfziele:
+- `connected` ist `true`, solange ein valider Live-Stream aktiv ist.
+- `last-message-age` bleibt im erwarteten Fenster (z. B. <= 60s unter Normalbetrieb).
+- `fallback-state` ist eindeutig (`none`/`aishub`/`replay-only`) und im UI/Log nachvollziehbar.
+
+Prüfschritte:
+1. App starten: `npm run dev`.
+2. AIS-Layer aktivieren und mindestens 2 Minuten beobachten.
+3. Verifizieren, dass eingehende AIS-Nachrichten den `last-message-age` regelmäßig zurücksetzen.
+
+### 2) Fallback-Umschaltung (Timeout/Auth/Error)
+
+Prüfziele:
+- Timeout, Auth-Fehler oder Verbindungsfehler lösen deterministisch den Fallback-Pfad aus.
+- Rückkehr zur Primärquelle erfolgt kontrolliert (kein Reconnect-Sturm).
+
+Prüfschritte:
+1. Auth-Fehler simulieren (ungültiger `VITE_AISSTREAM_API_KEY`) und App neu starten.
+2. Timeout simulieren (Netzwerk trennen/WS blockieren).
+3. Erwartung: Status wechselt auf Fallback (`aishub`) oder auf `replay-only`, inkl. klarer Fehlermeldung.
+
+### 3) Replay-Konsistenz (CSV -> CZML -> Viewer)
+
+Prüfziele:
+- Aus CSV erzeugte CZML-Dateien sind syntaktisch und zeitlich konsistent.
+- Viewer-Timeline zeigt erwartete Bewegungsdaten ohne Zeitversatz/Entity-Sprünge.
+
+Prüfschritte:
+1. One-shot-Generierung ausführen:
+
+   ```bash
+   cd Worldview
+   python3 tools/czml_generator.py --once --out .
+   ```
+
+2. Replay validieren:
+
+   ```bash
+   cd Worldview
+   python3 ./ops/validate-replay.py --root . --fail-on-empty
+   ```
+
+3. Viewer öffnen und generierte Replay-Datei im Zeitbereich prüfen (Start/Ende, Entity-Anzahl, Pfadkontinuität).
+
+### 4) Minimaler lokaler Testablauf
+
+```bash
+cd Worldview
+npm ci
+npm run dev
+npm run build
+python3 tools/czml_generator.py --once --out .
+python3 ./ops/validate-replay.py --root . --fail-on-empty
+```
+
+Akzeptanzkriterien:
+- Dev-Start und Build ohne Fehler.
+- Generatorlauf erzeugt Replay-Artefakte.
+- Replay-Validator meldet keinen Fehler.
+- AIS-Live-Health/Fallback-State sind im Laufzeitbetrieb nachvollziehbar.
 
 ## Live-Demo
 

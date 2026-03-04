@@ -138,14 +138,31 @@ console.info('[WorldView][Boot] Container-Größe beim Start', {
 });
 
 const googleMapTilesKey = (import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined)?.trim();
-const aisWebSocketUrl = (import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim();
-const aisWebSocketApiKey = (import.meta.env.VITE_AIS_WS_API_KEY as string | undefined)?.trim();
+const aisWebSocketUrl = ((import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim() || 'wss://stream.aisstream.io/v0/stream');
+const aisWebSocketApiKey = (
+  (import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined)?.trim()
+  || (import.meta.env.VITE_AIS_WS_API_KEY as string | undefined)?.trim()
+);
+const aisDefaultBoundingBoxes: [[[number, number], [number, number]]] = [
+  // Kostenfrei weil Free-Tier / GitHub Student Pack:
+  // bewusst kleines AOI statt globalem Stream, um Bandbreite/Rate-Limits zu schonen.
+  [[24.0, 53.5], [28.5, 58.5]]
+];
+const aisMessageTypes = [1, 2, 3] as const;
+const aisUpdateThrottleMs = 5_000;
+const aisStaleAfterMs = 30 * 60 * 1000;
+const aisSilenceThresholdMs = 90 * 1000;
+const aisReconnectBaseDelayMs = 1_000;
+const aisReconnectMaxDelayMs = 60_000;
+const aisReconnectJitterMs = 900;
+const aisReconnectMaxAttempts = 8;
 console.info('[WorldView][Env][Prod-Diagnose]', {
   mode: import.meta.env.MODE,
   prod: import.meta.env.PROD,
   hasGoogleMapTilesKey: Boolean(googleMapTilesKey),
   googleMapTilesKeyLength: googleMapTilesKey?.length ?? 0,
-  hasAisWebSocketUrl: Boolean(aisWebSocketUrl)
+  hasAisWebSocketUrl: Boolean(aisWebSocketUrl),
+  hasAisWebSocketApiKey: Boolean(aisWebSocketApiKey)
 });
 
 function setStatus(message: string): void {
@@ -1096,6 +1113,7 @@ type AisTrack = {
   position: Cesium.SampledPositionProperty;
   entity: Cesium.Entity;
   lastSeenEpochMs: number;
+  lastRenderUpdateEpochMs: number;
 };
 
 const liveAisTracks = new Map<string, AisTrack>();
@@ -1103,6 +1121,8 @@ let aisSocket: WebSocket | null = null;
 let aisSocketWasClosedIntentionally = false;
 let aisLastLiveMessageEpochMs = 0;
 let aisWatchdogIntervalId: number | null = null;
+let aisReconnectTimeoutId: number | null = null;
+let aisReconnectAttempt = 0;
 
 function closeAisSocket(): void {
   aisSocketWasClosedIntentionally = true;
@@ -1117,6 +1137,57 @@ function closeAisSocket(): void {
   }
 
   aisSocket = null;
+}
+
+function clearAisReconnectTimer(): void {
+  if (aisReconnectTimeoutId === null) {
+    return;
+  }
+
+  window.clearTimeout(aisReconnectTimeoutId);
+  aisReconnectTimeoutId = null;
+}
+
+function getAisReconnectDelayMs(attempt: number): number {
+  const safeAttempt = Math.max(1, attempt);
+  const exponentialDelay = Math.min(aisReconnectBaseDelayMs * (2 ** (safeAttempt - 1)), aisReconnectMaxDelayMs);
+  const jitter = Math.floor(Math.random() * aisReconnectJitterMs);
+  return exponentialDelay + jitter;
+}
+
+function scheduleAisReconnect(reason: string): void {
+  if (!layerState.ais || !navigator.onLine) {
+    return;
+  }
+
+  if (aisReconnectTimeoutId !== null) {
+    return;
+  }
+
+  if (!aisWebSocketApiKey) {
+    updateRuntimeDiagnostics({
+      aisFeed: 'Fehler',
+      aisDetail: 'AISStream API-Key fehlt (VITE_AISSTREAM_API_KEY oder VITE_AIS_WS_API_KEY)'
+    });
+    markPollStatus('ais', 'error');
+    return;
+  }
+
+  aisReconnectAttempt = Math.min(aisReconnectAttempt + 1, aisReconnectMaxAttempts);
+  const delayMs = getAisReconnectDelayMs(aisReconnectAttempt);
+  updateRuntimeDiagnostics({
+    aisFeed: 'AIS Fallback',
+    aisDetail: `${reason} • Reconnect in ~${Math.round(delayMs / 1000)}s (Versuch ${aisReconnectAttempt}/${aisReconnectMaxAttempts})`
+  });
+  markPollStatus('ais', 'fallback');
+
+  aisReconnectTimeoutId = window.setTimeout(() => {
+    aisReconnectTimeoutId = null;
+    if (!layerState.ais || !navigator.onLine) {
+      return;
+    }
+    startAisLiveFeed();
+  }, delayMs);
 }
 
 function parseFiniteNumber(value: unknown): number | null {
@@ -1137,26 +1208,38 @@ function parseAisShipsFromMessage(payload: unknown): ParsedAisShip[] {
   const source = payload as Record<string, unknown>;
 
   // God’s Eye Original-Look – Bilawal-Video March 2026
-  // AISStream-kompatibles Format (MessageType/MetaData/Message.PositionReport) + generische Fallback-Formate.
-  const positionReport = (source.Message as Record<string, unknown> | undefined)?.PositionReport as Record<string, unknown> | undefined;
+  // AISStream-Normalisierung: PositionReport + EnhancedPositionReport in ein einheitliches Vessel-Objekt.
   const metadata = source.MetaData as Record<string, unknown> | undefined;
+  const messageContainer = source.Message as Record<string, unknown> | undefined;
+  const reportCandidates: Array<Record<string, unknown> | undefined> = [
+    messageContainer?.PositionReport as Record<string, unknown> | undefined,
+    messageContainer?.EnhancedPositionReport as Record<string, unknown> | undefined,
+    source.PositionReport as Record<string, unknown> | undefined,
+    source.EnhancedPositionReport as Record<string, unknown> | undefined
+  ];
 
-  if (positionReport) {
-    const lat = parseFiniteNumber(positionReport.Latitude);
-    const lon = parseFiniteNumber(positionReport.Longitude);
-    const mmsi = String(metadata?.MMSI ?? positionReport.UserID ?? '').trim();
-
-    if (lat !== null && lon !== null && mmsi.length > 0) {
-      ships.push({
-        id: mmsi,
-        name: String(metadata?.ShipName ?? metadata?.CallSign ?? `MMSI ${mmsi}`).trim(),
-        lat,
-        lon,
-        speedKnots: parseFiniteNumber(positionReport.Sog) ?? undefined,
-        courseDegrees: parseFiniteNumber(positionReport.Cog) ?? undefined
-      });
-      return ships;
+  for (const report of reportCandidates) {
+    if (!report) {
+      continue;
     }
+
+    const lat = parseFiniteNumber(report.Latitude ?? report.Lat);
+    const lon = parseFiniteNumber(report.Longitude ?? report.Lon);
+    const mmsi = String(metadata?.MMSI ?? report.UserID ?? report.MMSI ?? '').trim();
+
+    if (lat === null || lon === null || mmsi.length === 0) {
+      continue;
+    }
+
+    ships.push({
+      id: mmsi,
+      name: String(metadata?.ShipName ?? metadata?.CallSign ?? `MMSI ${mmsi}`).trim(),
+      lat,
+      lon,
+      speedKnots: parseFiniteNumber(report.Sog ?? report.SpeedOverGround) ?? undefined,
+      courseDegrees: parseFiniteNumber(report.Cog ?? report.CourseOverGround) ?? undefined
+    });
+    return ships;
   }
 
   const candidateArray = Array.isArray(source.ships)
@@ -1194,9 +1277,8 @@ function parseAisShipsFromMessage(payload: unknown): ParsedAisShip[] {
 }
 
 function pruneStaleAisTracks(nowEpochMs: number): void {
-  const staleAfterMs = 15 * 60 * 1000;
   liveAisTracks.forEach((track, id) => {
-    if (nowEpochMs - track.lastSeenEpochMs <= staleAfterMs) {
+    if (nowEpochMs - track.lastSeenEpochMs <= aisStaleAfterMs) {
       return;
     }
 
@@ -1252,13 +1334,19 @@ function upsertLiveAisShip(ship: ParsedAisShip, nowEpochMs: number): void {
       name: normalizedName,
       position: sampled,
       entity,
-      lastSeenEpochMs: nowEpochMs
+      lastSeenEpochMs: nowEpochMs,
+      lastRenderUpdateEpochMs: nowEpochMs
     });
     return;
   }
 
-  existing.position.addSample(currentJulian, position);
   existing.lastSeenEpochMs = nowEpochMs;
+  if (nowEpochMs - existing.lastRenderUpdateEpochMs < aisUpdateThrottleMs) {
+    return;
+  }
+
+  existing.position.addSample(currentJulian, position);
+  existing.lastRenderUpdateEpochMs = nowEpochMs;
   existing.name = normalizedName;
   if (existing.entity.label) {
     existing.entity.label.text = new Cesium.ConstantProperty(normalizedName);
@@ -1288,16 +1376,23 @@ function startAisLiveFeed(): void {
     return;
   }
 
-  if (!aisWebSocketUrl) {
-    switchToAisFallback('VITE_AIS_WS_URL nicht gesetzt • lokale AIS-Simulation aktiv');
+  if (!aisWebSocketApiKey) {
+    switchToAisFallback('AISStream API-Key fehlt • lokale AIS-Simulation aktiv');
+    updateRuntimeDiagnostics({
+      aisFeed: 'Fehler',
+      aisDetail: 'Setze VITE_AISSTREAM_API_KEY (Fallback: VITE_AIS_WS_API_KEY)'
+    });
+    markPollStatus('ais', 'error');
     return;
   }
 
+  clearAisReconnectTimer();
   closeAisSocket();
   aisSocketWasClosedIntentionally = false;
+  aisLastLiveMessageEpochMs = 0;
   updateRuntimeDiagnostics({
     aisFeed: 'Initialisiere…',
-    aisDetail: 'Verbinde AIS-WebSocket…'
+    aisDetail: 'Verbinde AISStream-WebSocket…'
   });
 
   try {
@@ -1309,32 +1404,39 @@ function startAisLiveFeed(): void {
   }
 
   aisSocket.addEventListener('open', () => {
-    // God’s Eye Original-Look – Bilawal-Video March 2026
-    // Optionaler AISStream-Handshake für kostenfreie Public/Student-Feeds.
-    if (aisWebSocketApiKey) {
+    aisReconnectAttempt = 0;
+
+    // Kostenfrei weil Free-Tier / GitHub Student Pack:
+    // kleine Bounding Boxes + MessageTypes [1,2,3] reduzieren Datenvolumen und schonen Limits.
+    try {
       aisSocket?.send(
         JSON.stringify({
           APIKey: aisWebSocketApiKey,
-          BoundingBoxes: [
-            [
-              [24, 44],
-              [40, 64]
-            ]
-          ]
+          BoundingBoxes: aisDefaultBoundingBoxes,
+          MessageTypes: [...aisMessageTypes]
         })
       );
+    } catch (error) {
+      console.warn('[WorldView][AIS] Subscription konnte nicht gesendet werden', error);
+      switchToAisFallback('AIS Subscription fehlgeschlagen • lokale AIS-Simulation aktiv');
+      scheduleAisReconnect('AIS Subscription fehlgeschlagen');
+      return;
     }
 
     updateRuntimeDiagnostics({
       aisFeed: 'Initialisiere…',
-      aisDetail: 'AIS-WebSocket verbunden • warte auf Positionsdaten'
+      aisDetail: 'AISStream verbunden • warte auf PositionReport-Daten'
     });
   });
 
   aisSocket.addEventListener('message', (event) => {
+    if (typeof event.data !== 'string') {
+      return;
+    }
+
     let payload: unknown;
     try {
-      payload = JSON.parse(event.data as string);
+      payload = JSON.parse(event.data);
     } catch (error) {
       console.debug('[WorldView][AIS] Nicht-JSON Nachricht ignoriert', error);
       return;
@@ -1367,6 +1469,7 @@ function startAisLiveFeed(): void {
 
   aisSocket.addEventListener('error', () => {
     switchToAisFallback('AIS-WebSocket Fehler • lokale AIS-Simulation aktiv');
+    scheduleAisReconnect('AIS-WebSocket Fehler');
   });
 
   aisSocket.addEventListener('close', () => {
@@ -1374,16 +1477,15 @@ function startAisLiveFeed(): void {
       return;
     }
     switchToAisFallback('AIS-WebSocket geschlossen • lokale AIS-Simulation aktiv');
+    scheduleAisReconnect('AIS-WebSocket geschlossen');
   });
 
   if (aisWatchdogIntervalId === null) {
     aisWatchdogIntervalId = window.setInterval(() => {
-      if (!aisWebSocketUrl) {
-        return;
-      }
       if (!navigator.onLine) {
         return;
       }
+      pruneStaleAisTracks(Date.now());
       if (!aisSocket || aisSocket.readyState !== WebSocket.OPEN) {
         return;
       }
@@ -1391,10 +1493,10 @@ function startAisLiveFeed(): void {
         return;
       }
 
-      const silenceThresholdMs = 45 * 1000;
       const silenceMs = Date.now() - aisLastLiveMessageEpochMs;
-      if (silenceMs > silenceThresholdMs) {
-        switchToAisFallback('AIS Live-Timeout (>45s ohne Daten) • lokale AIS-Simulation aktiv');
+      if (silenceMs > aisSilenceThresholdMs) {
+        switchToAisFallback('AIS Live-Timeout (>90s ohne Daten) • lokale AIS-Simulation aktiv');
+        scheduleAisReconnect('AIS Live-Timeout');
       }
     }, 15 * 1000);
   }
