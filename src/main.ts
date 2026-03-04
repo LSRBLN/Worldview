@@ -28,6 +28,7 @@ const fullscreenButton = document.getElementById('fullscreenButton') as HTMLButt
 const hoverInfo = document.getElementById('hoverInfo') as HTMLDivElement | null;
 const entityInfoPanel = document.getElementById('entityInfoPanel') as HTMLDivElement | null;
 const pollingIndicator = document.getElementById('pollingIndicator') as HTMLDivElement | null;
+const militaryInfoPanel = document.getElementById('militaryInfoPanel') as HTMLDivElement | null;
 const appRoot = document.getElementById('app');
 const activeVisionMode = document.getElementById('activeVisionMode');
 const recClockText = document.getElementById('recClockText');
@@ -58,12 +59,22 @@ type PollStatus = {
   updatedAt: string;
 };
 
-const planeBlueIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#38d5ff" d="M31 2l6 20 19 7v6l-19-2-2 9 7 8v5l-10-5-10 5v-5l7-8-2-9-19 2v-6l19-7 6-20z"/></svg>`;
+const planeBlueIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#ffd24a" d="M31 2l6 20 19 7v6l-19-2-2 9 7 8v5l-10-5-10 5v-5l7-8-2-9-19 2v-6l19-7 6-20z"/></svg>`;
 const planeRedIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#ff5a5a" d="M31 2l6 20 19 7v6l-19-2-2 9 7 8v5l-10-5-10 5v-5l7-8-2-9-19 2v-6l19-7 6-20z"/></svg>`;
 const shipIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#7ee7ff" d="M8 34h48l-5 11-19 9-19-9-5-11zm11-12h26v8H19z"/></svg>`;
 const planeBlueIconDataUri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(planeBlueIconSvg)}`;
 const planeRedIconDataUri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(planeRedIconSvg)}`;
 const shipIconDataUri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(shipIconSvg)}`;
+
+type EntityIntel = {
+  callsign: string;
+  altitudeM: string;
+  status: string;
+  layer: string;
+  speed: string;
+  noradId: string;
+  distanceKm: string;
+};
 
 const runtimeDiagnostics: RuntimeDiagnosticsState = {
   tilesPath: 'OSM Fallback',
@@ -169,6 +180,24 @@ function safeText(value: unknown): string {
   }
   const text = String(value).trim();
   return text.length > 0 ? text : '—';
+}
+
+function getDistanceToCameraKm(entity: Cesium.Entity): string {
+  const positionProperty = entity.position;
+  if (!positionProperty) {
+    return '—';
+  }
+
+  const entityPos = positionProperty.getValue(viewer.clock.currentTime);
+  if (!entityPos) {
+    return '—';
+  }
+
+  const distanceM = Cesium.Cartesian3.distance(viewer.camera.positionWC, entityPos);
+  if (!Number.isFinite(distanceM)) {
+    return '—';
+  }
+  return `${(distanceM / 1000).toFixed(1)} km`;
 }
 
 console.info('[WorldView][Boot] DOM-Referenzen', {
@@ -300,16 +329,22 @@ function readEntityPosition(entity: Cesium.Entity): Cesium.Cartographic | null {
   return Cesium.Cartographic.fromCartesian(position);
 }
 
-function extractEntityMeta(entity: Cesium.Entity): { callsign: string; altitudeM: string; status: string; layer: string } {
+function extractEntityMeta(entity: Cesium.Entity): EntityIntel {
   const cartographic = readEntityPosition(entity);
   const altitudeM = cartographic ? `${Math.max(0, cartographic.height).toFixed(0)} m` : '—';
   const id = safeText(entity.id);
   const name = safeText(entity.name);
   const propertyBag = entity.properties as Cesium.PropertyBag | undefined;
-  const callsignValue = propertyBag?.getValue(viewer.clock.currentTime)?.callsign;
-  const jammingValue = propertyBag?.getValue(viewer.clock.currentTime)?.gpsJamming;
+  const properties = propertyBag?.getValue(viewer.clock.currentTime) as Record<string, unknown> | undefined;
+  const callsignValue = properties?.callsign;
+  const jammingValue = properties?.gpsJamming;
+  const speedRaw = Number(properties?.speedKts ?? properties?.speed ?? NaN);
+  const noradRaw = properties?.noradId;
   const callsign = safeText(callsignValue ?? (name !== '—' ? name : id));
   const status = jammingValue === true ? 'Jamming Detected' : 'Tracking';
+  const speed = Number.isFinite(speedRaw) ? `${speedRaw.toFixed(0)} kts` : '—';
+  const noradId = safeText(noradRaw);
+  const distanceKm = getDistanceToCameraKm(entity);
 
   let layer = 'Unknown';
   if (id.includes('adsb') || id.includes('flight') || id.includes('iran-flight')) {
@@ -324,7 +359,7 @@ function extractEntityMeta(entity: Cesium.Entity): { callsign: string; altitudeM
     layer = 'No-Fly Zone';
   }
 
-  return { callsign, altitudeM, status, layer };
+  return { callsign, altitudeM, status, layer, speed, noradId, distanceKm };
 }
 
 function formatEntityCoordinates(entity: Cesium.Entity): string {
@@ -366,6 +401,9 @@ function renderEntityInfoPanel(entity: Cesium.Entity | null): void {
         <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
         <p><strong>Typ:</strong> <span data-field="type">—</span></p>
         <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
+        <p><strong>Speed:</strong> <span data-field="speed">—</span></p>
+        <p><strong>NORAD-ID:</strong> <span data-field="norad">—</span></p>
+        <p><strong>Distanz:</strong> <span data-field="distance">—</span></p>
         <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
       </div>
       <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
@@ -384,11 +422,30 @@ function renderEntityInfoPanel(entity: Cesium.Entity | null): void {
       <p><strong>Callsign:</strong> <span data-field="callsign">${meta.callsign}</span></p>
       <p><strong>Typ:</strong> <span data-field="type">${entityType} (${meta.layer})</span></p>
       <p><strong>Koordinaten:</strong> <span data-field="coords">${coords}</span></p>
+      <p><strong>Speed:</strong> <span data-field="speed">${meta.speed}</span></p>
+      <p><strong>NORAD-ID:</strong> <span data-field="norad">${meta.noradId}</span></p>
+      <p><strong>Distanz:</strong> <span data-field="distance">${meta.distanceKm}</span></p>
       <p><strong>Status:</strong> <span data-field="status">${meta.status} • ALT ${meta.altitudeM}</span></p>
     </div>
     <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="${entityId}">Ausblenden</button>
   `;
   bindHideEntityAction();
+}
+
+function renderMilitaryInfoPanel(entries: Array<{ callsign: string; altitude: string; speed: string; source: string }>): void {
+  if (!militaryInfoPanel) {
+    return;
+  }
+
+  if (entries.length === 0) {
+    militaryInfoPanel.innerHTML = '<h2>Military Tracks</h2><p>Keine militärischen Tracks aktiv.</p>';
+    return;
+  }
+
+  const body = entries.slice(0, 6).map((entry) => {
+    return `<p><strong>${entry.callsign}</strong> • ${entry.altitude} • ${entry.speed} • ${entry.source}</p>`;
+  }).join('');
+  militaryInfoPanel.innerHTML = `<h2>Military Tracks</h2>${body}`;
 }
 
 function bindHideEntityAction(): void {
@@ -440,11 +497,12 @@ function updateHoverInfo(x: number, y: number): void {
 
   const entity = (picked as { id: Cesium.Entity }).id;
   const meta = extractEntityMeta(entity);
+  const coords = formatEntityCoordinates(entity);
   hoverInfo.style.display = 'block';
   hoverInfo.setAttribute('aria-hidden', 'false');
   hoverInfo.style.left = `${x + 14}px`;
   hoverInfo.style.top = `${y + 14}px`;
-  hoverInfo.innerHTML = `<strong>${meta.callsign}</strong><br/>Alt: ${meta.altitudeM}<br/>${meta.status}`;
+  hoverInfo.innerHTML = `<strong>${meta.callsign}</strong><br/>Alt: ${meta.altitudeM}<br/>Spd: ${meta.speed}<br/>Dst: ${meta.distanceKm}<br/>${coords}<br/>${meta.status}`;
 }
 
 let activeFallbackImageryLayer: Cesium.ImageryLayer | null = null;
@@ -1018,14 +1076,14 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
       position: sampledTrack,
       point: {
         pixelSize: 7,
-        color: Cesium.Color.YELLOW,
+        color: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 1
       },
       label: {
-        text: name,
+        text: `NORAD ${name}`,
         font: '10pt monospace',
-        fillColor: Cesium.Color.YELLOW,
+        fillColor: Cesium.Color.WHITE,
         pixelOffset: new Cesium.Cartesian2(10, -10)
       },
       path: {
@@ -1034,7 +1092,12 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
         width: 1.1,
         leadTime: 0,
         trailTime: 1800,
-        material: Cesium.Color.YELLOW.withAlpha(0.7)
+        material: Cesium.Color.WHITE.withAlpha(0.72)
+      },
+      properties: {
+        callsign: name,
+        noradId: name,
+        speedKts: null
       }
     });
 
@@ -1159,6 +1222,7 @@ async function pollAdsbLayer(): Promise<void> {
     }
 
     layerCollections.adsb.entities.removeAll();
+    const militaryTracks: Array<{ callsign: string; altitude: string; speed: string; source: string }> = [];
     const maxFlights = 120;
     const states = data.states ?? [];
     let renderedFlights = 0;
@@ -1169,12 +1233,18 @@ async function pollAdsbLayer(): Promise<void> {
       const lon = Number(state[5]);
       const lat = Number(state[6]);
       const altitude = Number(state[7] ?? 0);
+      const velocityMs = Number(state[9] ?? NaN);
+      const speedKts = Number.isFinite(velocityMs) ? velocityMs * 1.94384 : NaN;
 
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
         continue;
       }
 
-      const isBlue = i % 2 === 0;
+      const isMilitary = /MIL|ARMY|NAVY|AIR|RCH|RRR|QID|UAE|IRIAF|F\d{1,2}/i.test(callsign);
+      const isBlue = !isMilitary && i % 2 === 0;
+      const colorFriendly = Cesium.Color.fromCssColorString('#ffd24a').withAlpha(0.95);
+      const colorHostile = Cesium.Color.fromCssColorString('#ff5a5a').withAlpha(0.96);
+      const flightColor = isMilitary ? colorHostile : colorFriendly;
 
       layerCollections.adsb.entities.add({
         id: `adsb-live-${callsign}-${i}`,
@@ -1185,34 +1255,48 @@ async function pollAdsbLayer(): Promise<void> {
           image: isBlue ? planeBlueIconDataUri : planeRedIconDataUri,
           scale: 0.46,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          color: isBlue ? Cesium.Color.CYAN.withAlpha(0.95) : Cesium.Color.RED.withAlpha(0.95)
+          color: flightColor,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
         },
         path: {
           resolution: 120,
-          width: 1,
+          width: isMilitary ? 1.5 : 1.2,
           leadTime: 600,
           trailTime: 1200,
-          material: isBlue ? Cesium.Color.CYAN.withAlpha(0.56) : Cesium.Color.RED.withAlpha(0.56)
+          material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
         },
         label: {
-          text: callsign,
+          text: `${callsign} • ALT ${Math.max(0, altitude).toFixed(0)}m`,
           font: '9pt monospace',
-          fillColor: isBlue ? Cesium.Color.CYAN : Cesium.Color.RED,
+          fillColor: isMilitary ? Cesium.Color.RED : Cesium.Color.fromCssColorString('#ffd24a'),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset: new Cesium.Cartesian2(8, -8),
-          show: false
+          show: true,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
         },
         properties: {
           callsign,
           altitude,
-          status: isBlue ? 'FRIENDLY' : 'HOSTILE'
+          speedKts,
+          status: isMilitary ? 'MILITARY TRACK' : 'TRACKING'
         }
       });
 
+      if (isMilitary) {
+        militaryTracks.push({
+          callsign,
+          altitude: `${Math.max(0, altitude).toFixed(0)} m`,
+          speed: Number.isFinite(speedKts) ? `${speedKts.toFixed(0)} kts` : '—',
+          source: activeFeedLabel
+        });
+      }
+
       renderedFlights += 1;
     }
+
+    renderMilitaryInfoPanel(militaryTracks);
 
     if (renderedFlights === 0) {
       // God’s Eye Original-Look – Bilawal-Video March 2026
@@ -1517,10 +1601,15 @@ function upsertLiveAisShip(ship: ParsedAisShip, nowEpochMs: number): void {
       },
       path: {
         resolution: 120,
-        width: 1,
+        width: 1.25,
         leadTime: 0,
         trailTime: 1800,
-        material: Cesium.Color.CYAN.withAlpha(0.58)
+        material: Cesium.Color.fromCssColorString('#7ee7ff').withAlpha(0.72)
+      },
+      properties: {
+        callsign: normalizedName,
+        speedKts: ship.speedKnots ?? null,
+        status: 'AIS TRACK'
       }
     });
 
@@ -1768,9 +1857,10 @@ const crtStage = new Cesium.PostProcessStage({
     void main() {
       vec2 uv = v_textureCoordinates;
       vec4 color = texture(colorTexture, uv);
-      float scan = sin(uv.y * 1300.0) * 0.08 * u_intensity;
+      float scan = sin(uv.y * 1500.0) * 0.09 * u_intensity;
+      float scan2 = sin((uv.y + uv.x * 0.08) * 720.0) * 0.03 * u_intensity;
       float vignette = smoothstep(0.95, 0.2, distance(uv, vec2(0.5)));
-      vec3 crt = color.rgb * (1.0 - 0.18 * u_intensity) + vec3(scan);
+      vec3 crt = color.rgb * (1.0 - 0.2 * u_intensity) + vec3(scan + scan2);
       crt *= mix(1.0, vignette, 0.45 * u_intensity);
       fragColor = vec4(crt, color.a);
     }
@@ -1867,7 +1957,37 @@ function setShaderMode(mode: ShaderMode): void {
 
   const modeLabel = mode === 'none' ? 'OFF' : mode.toUpperCase();
   setStatus(`Vision mode: ${shadersEnabled ? modeLabel : 'DISABLED (LAYER OFF)'}`);
+  syncTopModeButtons();
   viewer.scene.requestRender();
+}
+
+function syncTopModeButtons(): void {
+  const buttons = document.querySelectorAll<HTMLButtonElement>('button[data-top-mode]');
+  buttons.forEach((button) => {
+    const mode = button.dataset.topMode as ShaderMode | undefined;
+    const isActive = mode === activeShaderMode;
+    button.classList.toggle('is-active', Boolean(isActive));
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function bindTopModeSwitch(): void {
+  const buttons = document.querySelectorAll<HTMLButtonElement>('button[data-top-mode]');
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.topMode as ShaderMode | undefined;
+      if (!mode) {
+        return;
+      }
+
+      const radio = document.querySelector<HTMLInputElement>(`input[name="shaderMode"][value="${mode}"]`);
+      if (radio) {
+        radio.checked = true;
+      }
+      setShaderMode(mode);
+    });
+  });
+  syncTopModeButtons();
 }
 
 function toggleLayer(layerName: string): void {
@@ -2040,6 +2160,83 @@ function bindToolbarEvents(): void {
   });
 }
 
+function installRoadTrafficParticles(): void {
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  // Lightweight Traffic-Particle Overlay im Stil des Original-HUDs.
+  const seeds = [
+    { id: 'traffic-hormuz-1', lon: 56.22, lat: 26.14, heading: 0.0014 },
+    { id: 'traffic-hormuz-2', lon: 56.38, lat: 26.21, heading: -0.0011 },
+    { id: 'traffic-hormuz-3', lon: 56.55, lat: 26.02, heading: 0.0018 },
+    { id: 'traffic-iran-1', lon: 51.39, lat: 35.72, heading: 0.0012 },
+    { id: 'traffic-iran-2', lon: 51.52, lat: 35.64, heading: -0.0013 }
+  ];
+
+  seeds.forEach((seed, index) => {
+    layerCollections.jamming.entities.add({
+      id: `${seed.id}-particle`,
+      position: new Cesium.CallbackPositionProperty((time?: Cesium.JulianDate) => {
+        const current = time ?? viewer.clock.currentTime;
+        const elapsed = Cesium.JulianDate.secondsDifference(current, viewer.clock.startTime);
+        const drift = ((elapsed + index * 180) % 900) * seed.heading * 0.015;
+        return Cesium.Cartesian3.fromDegrees(seed.lon + drift, seed.lat + Math.sin(elapsed * 0.006 + index) * 0.012, 30);
+      }, false),
+      point: {
+        pixelSize: 3,
+        color: Cesium.Color.fromCssColorString('#ffd24a').withAlpha(0.82),
+        outlineColor: Cesium.Color.BLACK.withAlpha(0.65),
+        outlineWidth: 1,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      },
+      properties: {
+        callsign: `TRAFFIC-${index + 1}`,
+        status: 'GROUND FLOW'
+      }
+    });
+  });
+}
+
+function installCctvIcons(): void {
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  const cctvIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><path fill="#9affd8" d="M8 26h28l8-7h12v8H46l-8 7H8z"/><circle cx="20" cy="44" r="6" fill="#00ff9d"/></svg>'
+  );
+
+  const cameras = [
+    { id: 'cctv-hormuz', name: 'CCTV HORMUZ CAM-01', lon: 56.44, lat: 26.12 },
+    { id: 'cctv-tehran', name: 'CCTV TEHRAN CAM-03', lon: 51.41, lat: 35.69 },
+    { id: 'cctv-bandar', name: 'CCTV BANDAR CAM-02', lon: 56.27, lat: 27.18 }
+  ];
+
+  cameras.forEach((camera) => {
+    layerCollections.noFlyZones.entities.add({
+      id: camera.id,
+      name: camera.name,
+      position: Cesium.Cartesian3.fromDegrees(camera.lon, camera.lat, 120),
+      billboard: {
+        image: cctvIcon,
+        scale: 0.42,
+        color: Cesium.Color.fromCssColorString('#9affd8').withAlpha(0.95),
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      },
+      label: {
+        text: camera.name,
+        font: '9pt monospace',
+        fillColor: Cesium.Color.fromCssColorString('#9affd8'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(8, -8),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 700_000)
+      },
+      properties: {
+        callsign: camera.name,
+        status: 'VISUAL FEED'
+      }
+    });
+  });
+}
+
 function bindInteractionHandlers(): void {
   // God’s Eye Original-Look – Bilawal-Video March 2026
   pointerHandler.setInputAction((movement: { endPosition: Cesium.Cartesian2 }) => {
@@ -2163,11 +2360,14 @@ function startRateLimitedPollers(): void {
 }
 
 bindToolbarEvents();
+bindTopModeSwitch();
 bindInteractionHandlers();
 createBottomLayerBar();
 setShaderMode('none');
 setShaderIntensity(0.65);
 buildJammingLayerFromReplay();
+installRoadTrafficParticles();
+installCctvIcons();
 setStatus('Viewer initialized. Loading Google 3D Tiles…');
 setHealth(navigator.onLine ? 'Network: online' : 'Network: offline');
 renderRuntimeDiagnosticsHud();

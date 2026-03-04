@@ -28,6 +28,21 @@
         </div>
       </div>
 
+      <div class="hud-corner corner-tl" aria-hidden="true"></div>
+      <div class="hud-corner corner-tr" aria-hidden="true"></div>
+      <div class="hud-corner corner-bl" aria-hidden="true"></div>
+      <div class="hud-corner corner-br" aria-hidden="true"></div>
+
+      <aside id="topModeSwitch" class="top-mode-switch" aria-label="Vision mode switch">
+        <h2>Vision Mode</h2>
+        <div class="mode-button-row">
+          <button type="button" data-top-mode="none" class="is-active">NORMAL</button>
+          <button type="button" data-top-mode="crt">CRT</button>
+          <button type="button" data-top-mode="nvg">NVG</button>
+          <button type="button" data-top-mode="flir">FLIR</button>
+        </div>
+      </aside>
+
       <aside id="toolbar" aria-label="STRATONOVA command controls">
         <section class="toolbar-section" aria-label="camera presets">
           <h2>Camera</h2>
@@ -85,6 +100,10 @@
       </aside>
 
       <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling • Flights: standby • SAT: standby • AIS: standby • --:--:--</div>
+      <aside id="militaryInfoPanel" class="military-info-panel" aria-live="polite">
+        <h2>Military Tracks</h2>
+        <p>Keine militärischen Tracks aktiv.</p>
+      </aside>
       <div id="hoverInfo" class="hover-info" aria-hidden="true"></div>
       <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
         <h2>Entity Intel // Tactical Readout</h2>
