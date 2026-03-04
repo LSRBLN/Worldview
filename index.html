@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,82 +12,83 @@
       <div class="vignette-overlay" aria-hidden="true"></div>
       <div class="reticle-grid" aria-hidden="true"></div>
 
-      <!-- // StratoNova Original-Look – Bilawal-Video March 2026 -->
       <div class="header">
         <div class="logo">
           <span class="top-secret" data-label="TOP SECRET // SI-TK // NOFORN // ORCON">TOP SECRET // SI-TK // NOFORN // ORCON</span>
           <h1>STRATONOVA</h1>
-          <span class="gods-eye">STRATONOVA • 4D COMMAND CENTER</span>
+          <span class="gods-eye">COMMAND CENTER</span>
           <div class="header-meta" aria-hidden="true">
             <span>THEATER: MENA</span>
-            <span>MODE: STRATEGIC ISR</span>
-            <span>CLEARANCE: TS/SCI</span>
+            <span id="recClockText">REC: --:--:--Z</span>
+            <span id="orbText">ORB: LEO-241</span>
+            <span id="passText">PASS: HOLD</span>
+            <span id="clearanceText">CLEARANCE: TS/SCI</span>
             <span id="activeVisionMode">VISION: EO</span>
           </div>
         </div>
       </div>
 
-      <aside id="toolbar" aria-label="StratoNova Steuerung">
-        <section class="toolbar-section" aria-label="Kamera Presets">
-          <h2>Kamera</h2>
+      <aside id="toolbar" aria-label="STRATONOVA command controls">
+        <section class="toolbar-section" aria-label="camera presets">
+          <h2>Camera</h2>
           <div class="button-row">
-            <button type="button" data-camera="hormuz">Straße von Hormuz</button>
+            <button type="button" data-camera="hormuz">Strait of Hormuz</button>
             <button type="button" data-camera="iran">Iran Overview</button>
-            <button type="button" data-camera="tehran">Teheran</button>
+            <button type="button" data-camera="tehran">Tehran</button>
             <button type="button" data-camera="natanz">Natanz</button>
           </div>
         </section>
 
-        <section class="toolbar-section" aria-label="Layer Toggler">
-          <h2>Layer</h2>
-          <label><input type="checkbox" data-layer="satellites" checked /> Satelliten</label>
+        <section class="toolbar-section" aria-label="layer toggles">
+          <h2>Layers</h2>
+          <label><input type="checkbox" data-layer="satellites" checked /> Satellites</label>
           <label><input type="checkbox" data-layer="adsb" checked /> ADS-B</label>
           <label><input type="checkbox" data-layer="ais" checked /> AIS</label>
           <label><input type="checkbox" data-layer="jamming" checked /> GPS Jamming</label>
           <label><input type="checkbox" data-layer="noFlyZones" checked /> No-Fly Zones</label>
-          <label><input type="checkbox" data-layer="shaders" checked /> Shader Output</label>
+          <label><input type="checkbox" data-layer="shaders" checked /> Vision Shader Output</label>
         </section>
 
-        <section class="toolbar-section" aria-label="Shader Steuerung">
-          <h2>Shader Modus</h2>
+        <section class="toolbar-section" aria-label="shader controls">
+          <h2>Vision Modes</h2>
           <div class="shader-mode-grid">
-            <label><input type="radio" name="shaderMode" value="none" checked /> Aus</label>
-            <label><input type="radio" name="shaderMode" value="crt" /> CRT</label>
-            <label><input type="radio" name="shaderMode" value="nvg" /> NVG</label>
-            <label><input type="radio" name="shaderMode" value="flir" /> FLIR</label>
+            <label class="shader-toggle"><input type="radio" name="shaderMode" value="none" checked /> OFF</label>
+            <label class="shader-toggle"><input type="radio" name="shaderMode" value="crt" /> CRT</label>
+            <label class="shader-toggle"><input type="radio" name="shaderMode" value="nvg" /> NVG</label>
+            <label class="shader-toggle"><input type="radio" name="shaderMode" value="flir" /> FLIR</label>
           </div>
-          <label class="range-label" for="shaderIntensity">Intensität</label>
+          <label class="range-label" for="shaderIntensity">Intensity</label>
           <input id="shaderIntensity" type="range" min="0" max="1" step="0.01" value="0.65" />
         </section>
 
-        <section class="toolbar-section" aria-label="Replay Export">
+        <section class="toolbar-section" aria-label="replay export">
           <h2>Replay</h2>
-          <button type="button" id="exportReplayButton">CZML Export herunterladen</button>
-          <button type="button" id="fullscreenButton">Fullscreen HUD</button>
+          <button type="button" id="exportReplayButton">Export CZML Snapshot</button>
+          <button type="button" id="fullscreenButton">Toggle Fullscreen HUD</button>
         </section>
 
-        <section class="toolbar-section" aria-label="Status">
-          <h2>Status</h2>
-          <p id="statusText">Initialisiere Cesium Viewer…</p>
-          <p id="healthText">Netzwerk: online</p>
+        <section class="toolbar-section" aria-label="system status">
+          <h2>System Status</h2>
+          <p id="statusText">Initializing tactical globe systems…</p>
+          <p id="healthText">Network: online</p>
           <div class="api-status-strip" aria-live="polite">
-            <span id="apiTilesText">Tiles: init</span>
-            <span id="apiFlightsText">Flights: init</span>
-            <span id="apiAisText">AIS: init</span>
+            <span id="apiTilesText">Tiles: standby</span>
+            <span id="apiFlightsText">Flights: standby</span>
+            <span id="apiAisText">AIS: standby</span>
           </div>
         </section>
 
-        <section class="toolbar-section" aria-label="Attribution">
+        <section class="toolbar-section" aria-label="attribution">
           <h2>Attribution</h2>
-          <p class="attribution-text">Google Photorealistic 3D Tiles • CesiumJS • OpenSky • Celestrak • Free-Tier Datenquellen</p>
+          <p class="attribution-text">Google Photorealistic 3D Tiles • CesiumJS • OpenSky • Celestrak • Free-tier OSINT feeds</p>
         </section>
       </aside>
 
-      <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling: init…</div>
+      <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling • Flights: standby • SAT: standby • AIS: standby • --:--:--</div>
       <div id="hoverInfo" class="hover-info" aria-hidden="true"></div>
       <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
-        <h2>Entity-Info</h2>
-        <p>Wähle ein Objekt auf der Karte aus.</p>
+        <h2>Entity Intel</h2>
+        <p>Select any object on the map to inspect telemetry.</p>
       </aside>
 
       <div id="cesiumContainer"></div>

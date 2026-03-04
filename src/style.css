@@ -1,38 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&family=VT323&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap');
 
 :root {
-  --accent-green: #4db8ff;
-  --accent-green-soft: #b5deff;
-  --classified-red: #ff3344;
-  --hud-bg: rgba(8, 18, 38, 0.5);
-  --hud-border: rgba(82, 156, 255, 0.6);
-  --hud-glow: 0 0 8px rgba(77, 184, 255, 0.75), 0 0 18px rgba(77, 184, 255, 0.35);
-  --hud-text-shadow: 0 0 8px rgba(77, 184, 255, 0.72), 0 0 14px rgba(77, 184, 255, 0.2);
-  --scanline-opacity: 0.14;
-  --scanline-speed: 7s;
-  --phosphor-strength: 0.11;
-  --reticle-color: rgba(77, 184, 255, 0.06);
-}
-
-.mode-eo {
-  --accent-green: #4db8ff;
-  --accent-green-soft: #b5deff;
-  --reticle-color: rgba(77, 184, 255, 0.06);
-}
-
-.mode-nvg {
-  --accent-green: #80d6ff;
-  --accent-green-soft: #d7efff;
-  --phosphor-strength: 0.16;
-  --reticle-color: rgba(128, 214, 255, 0.07);
-}
-
-.mode-flir {
-  --accent-green: #5bb9ff;
-  --accent-green-soft: #b5deff;
-  --scanline-opacity: 0.12;
-  --phosphor-strength: 0.08;
-  --reticle-color: rgba(91, 185, 255, 0.08);
+  --bg-core: #000000;
+  --bg-soft: #050505;
+  --neon-primary: #00ff9d;
+  --neon-secondary: #00ff41;
+  --neon-soft: #9affd8;
+  --alert-red: #ff2e3d;
+  --hud-panel: rgba(0, 0, 0, 0.78);
+  --hud-panel-strong: rgba(0, 0, 0, 0.9);
+  --hud-border: rgba(0, 255, 157, 0.66);
+  --hud-shadow:
+    0 0 10px rgba(0, 255, 157, 0.52),
+    0 0 24px rgba(0, 255, 157, 0.22),
+    inset 0 0 24px rgba(0, 255, 65, 0.11);
+  --text-shadow-neon:
+    0 0 7px rgba(0, 255, 157, 0.95),
+    0 0 15px rgba(0, 255, 157, 0.42);
+  --scanline-opacity: 0.2;
 }
 
 html,
@@ -43,27 +28,20 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  background: radial-gradient(circle at 50% 10%, #070f0a 0%, #020604 45%, #000 100%);
-  color: var(--accent-green-soft);
-  font-family: 'VT323', 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
+  font-family: 'Courier New', monospace;
+  background: radial-gradient(circle at 50% 0%, var(--bg-soft) 0%, var(--bg-core) 42%, #000 100%);
+  color: var(--neon-soft);
 }
 
 body,
 #cesiumContainer {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   background: #000;
-  font-family: 'VT323', 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
-  color: var(--accent-green-soft);
-  overflow: hidden;
+  font-family: 'Courier New', monospace;
 }
 
 .viewer {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   position: relative;
-  box-shadow:
-    inset 0 0 140px rgba(0, 255, 65, 0.09),
-    0 0 40px rgba(0, 255, 65, 0.2);
+  box-shadow: inset 0 0 180px rgba(0, 255, 157, 0.07);
 }
 
 .crt-overlay,
@@ -77,158 +55,132 @@ body,
 
 .crt-overlay {
   z-index: 1010;
-  mix-blend-mode: screen;
   opacity: var(--scanline-opacity);
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(110, 255, 165, 0.13) 0px,
-      rgba(110, 255, 165, 0.13) 1px,
+      rgba(0, 255, 157, 0.12) 0px,
+      rgba(0, 255, 157, 0.12) 1px,
       rgba(0, 0, 0, 0) 2px,
       rgba(0, 0, 0, 0) 4px
     ),
-    repeating-linear-gradient(
-      to right,
-      rgba(100, 255, 155, 0.03) 0px,
-      rgba(100, 255, 155, 0.03) 1px,
-      rgba(0, 0, 0, 0) 3px,
-      rgba(0, 0, 0, 0) 6px
-    );
-  animation: crt-scan var(--scanline-speed) linear infinite;
+    linear-gradient(180deg, rgba(0, 255, 65, 0.03) 0%, rgba(0, 0, 0, 0) 100%);
+  mix-blend-mode: screen;
+  animation: crt-scan 6s linear infinite;
 }
 
 .phosphor-overlay {
   z-index: 1011;
-  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, var(--phosphor-strength)) 0%, rgba(0, 255, 65, 0) 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.1) 0%, rgba(0, 0, 0, 0) 72%);
   mix-blend-mode: color-dodge;
-  animation: phosphor-breathe 4s ease-in-out infinite;
+  animation: phosphor-pulse 4.5s ease-in-out infinite;
 }
 
 .vignette-overlay {
   z-index: 1012;
-  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.58) 100%);
+  background: radial-gradient(circle at 50% 45%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.76) 100%);
 }
 
 .reticle-grid {
   z-index: 1013;
   background-image:
-    linear-gradient(to right, var(--reticle-color) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--reticle-color) 1px, transparent 1px);
-  background-size: 82px 82px;
-  mask-image: radial-gradient(circle at center, black 35%, transparent 90%);
+    linear-gradient(to right, rgba(0, 255, 157, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 255, 157, 0.07) 1px, transparent 1px);
+  background-size: 90px 90px;
   opacity: 0.35;
+  mask-image: radial-gradient(circle at center, black 30%, transparent 90%);
 }
 
 .header {
   position: fixed;
-  top: 8px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1100;
+  z-index: 1200;
   text-align: center;
   pointer-events: none;
 }
 
 .logo {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  padding: 8px 20px 10px;
+  min-width: 440px;
+  padding: 10px 22px 12px;
   border: 1px solid var(--hud-border);
-  background: var(--hud-bg);
-  box-shadow:
-    inset 0 0 22px rgba(0, 255, 65, 0.12),
-    0 0 26px rgba(0, 255, 65, 0.18);
-  backdrop-filter: blur(6px) saturate(120%);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.9) 100%);
+  box-shadow: var(--hud-shadow);
+  backdrop-filter: blur(5px);
 }
 
 .top-secret {
+  position: relative;
   display: block;
-  font-family: 'VT323', 'Share Tech Mono', monospace;
-  color: var(--classified-red);
+  color: var(--alert-red);
   font-size: 11px;
-  letter-spacing: 0.13em;
-  text-shadow: 0 0 12px rgba(255, 79, 79, 0.45);
-  animation: top-secret-glitch 3.5s infinite;
-}
-
-.top-secret::before,
-.top-secret::after {
-  content: attr(data-label);
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.top-secret::before {
-  color: #ff7080;
-  transform: translateX(-1px);
-  animation: top-secret-random-a 4.2s infinite steps(1, end);
-}
-
-.top-secret::after {
-  color: #74ffad;
-  transform: translateX(1px);
-  animation: top-secret-random-b 5.1s infinite steps(1, end);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-shadow: 0 0 11px rgba(255, 46, 61, 0.72);
+  animation: classified-blink 1.2s steps(2, end) infinite;
 }
 
 .logo h1 {
-  margin: 3px 0 2px;
-  font-family: 'Orbitron', 'Share Tech Mono', monospace;
-  font-size: 26px;
-  letter-spacing: 0.17em;
+  margin: 4px 0 2px;
+  font-family: 'Orbitron', 'Courier New', monospace;
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent-green-soft);
-  text-shadow: var(--hud-glow);
+  color: #d9ffe9;
+  text-shadow: var(--text-shadow-neon);
 }
 
 .gods-eye {
   display: block;
-  font-family: 'Share Tech Mono', 'VT323', monospace;
-  color: #d2ffea;
-  font-size: 12px;
-  letter-spacing: 0.11em;
-  text-shadow: 0 0 10px rgba(172, 255, 223, 0.35);
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #caffe7;
+  text-shadow: 0 0 8px rgba(0, 255, 157, 0.55);
 }
 
 .header-meta {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  margin-top: 5px;
-  display: flex;
-  gap: 12px;
+  margin-top: 7px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, auto));
+  gap: 8px;
   justify-content: center;
-  font-size: 10px;
-  letter-spacing: 0.09em;
-  color: rgba(172, 255, 223, 0.86);
 }
 
 .header-meta span {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   padding: 2px 7px;
-  border: 1px solid rgba(0, 255, 65, 0.28);
-  background: rgba(0, 14, 8, 0.4);
+  border: 1px solid rgba(0, 255, 157, 0.38);
+  background: rgba(0, 22, 11, 0.5);
+  color: #c8ffe5;
+  text-shadow: 0 0 8px rgba(0, 255, 157, 0.4);
 }
 
 #toolbar {
-  position: absolute;
-  top: 108px;
-  left: 12px;
-  z-index: 1050;
-  width: 330px;
-  max-height: calc(100vh - 165px);
+  position: fixed;
+  top: 110px;
+  left: 14px;
+  z-index: 1150;
+  width: 340px;
+  max-height: calc(100vh - 170px);
+  overflow: auto;
   padding: 14px;
   border: 1px solid var(--hud-border);
-  border-radius: 8px;
-  background: var(--hud-bg);
-  overflow: auto;
-  box-shadow:
-    inset 0 0 25px rgba(0, 255, 65, 0.08),
-    0 0 20px rgba(0, 255, 65, 0.16);
-  backdrop-filter: blur(7px) saturate(120%);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.66) 0%, rgba(0, 0, 0, 0.82) 100%);
+  box-shadow: var(--hud-shadow);
+  backdrop-filter: blur(6px);
 }
 
 .toolbar-section {
   margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(43, 255, 184, 0.2);
+  padding-top: 11px;
+  border-top: 1px solid rgba(0, 255, 157, 0.25);
 }
 
 .toolbar-section:first-child {
@@ -239,11 +191,11 @@ body,
 
 .toolbar-section h2 {
   margin: 0 0 8px;
-  font-size: 11px;
+  color: var(--neon-soft);
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent-green-soft);
-  text-shadow: var(--hud-text-shadow);
+  letter-spacing: 0.2em;
+  text-shadow: var(--text-shadow-neon);
 }
 
 .button-row {
@@ -254,80 +206,91 @@ body,
 
 button,
 .toggle {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  background: rgba(0, 20, 12, 0.32);
-  border: 1px solid var(--hud-border);
-  color: var(--accent-green-soft);
-  text-shadow: 0 0 8px rgba(94, 255, 202, 0.8);
-  padding: 6px 14px;
+  border: 1px solid rgba(0, 255, 157, 0.58);
+  background: linear-gradient(180deg, rgba(0, 20, 10, 0.55) 0%, rgba(0, 0, 0, 0.74) 100%);
+  color: #d8ffe9;
+  text-shadow: 0 0 7px rgba(0, 255, 157, 0.65);
+  font-family: 'Courier New', monospace;
   font-size: 12px;
   letter-spacing: 0.04em;
-  transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  padding: 7px 12px;
+  border-radius: 4px;
+  transition: all 130ms ease;
 }
 
 button:hover {
-  background: rgba(0, 255, 65, 0.14);
-  box-shadow: inset 0 0 16px rgba(0, 255, 65, 0.2);
-  transform: translateY(-1px);
   cursor: pointer;
+  border-color: rgba(0, 255, 157, 0.92);
+  background: rgba(0, 255, 157, 0.14);
+  box-shadow:
+    inset 0 0 14px rgba(0, 255, 157, 0.2),
+    0 0 16px rgba(0, 255, 157, 0.42);
+  transform: translateY(-1px);
 }
 
 .toolbar-section label {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: 9px;
   margin-bottom: 6px;
-  color: #c4ffe8;
+  color: #c9ffe6;
+  font-size: 12px;
 }
 
 .toolbar-section input[type='checkbox'],
 .toolbar-section input[type='radio'] {
-  accent-color: var(--accent-green);
+  accent-color: var(--neon-primary);
 }
 
 .shader-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 10px;
-  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.shader-toggle {
+  border: 1px solid rgba(0, 255, 157, 0.45);
+  border-radius: 16px;
+  padding: 6px 10px;
+  background: rgba(0, 18, 9, 0.5);
+  box-shadow: inset 0 0 12px rgba(0, 255, 65, 0.09);
 }
 
 .range-label {
   margin-top: 8px;
   margin-bottom: 4px;
-  font-size: 12px;
-  color: #9dffdc;
+  color: var(--neon-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
 }
 
 #shaderIntensity {
   width: 100%;
-  filter: drop-shadow(0 0 4px rgba(0, 255, 65, 0.45));
+  accent-color: var(--neon-primary);
+  filter: drop-shadow(0 0 6px rgba(0, 255, 157, 0.65));
 }
 
 .api-status-strip {
-  margin-top: 7px;
+  margin-top: 8px;
   display: grid;
   gap: 4px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: #cbffec;
 }
 
 .api-status-strip span {
-  padding: 2px 6px;
-  border: 1px solid rgba(0, 255, 65, 0.24);
-  background: rgba(0, 14, 8, 0.38);
-  box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.1);
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px solid rgba(0, 255, 157, 0.25);
+  background: rgba(0, 0, 0, 0.44);
+  color: #beffde;
 }
 
 #statusText,
 #healthText,
 .attribution-text {
   margin: 0;
+  color: #bfffe0;
   font-size: 11px;
   line-height: 1.45;
-  color: #a8ffe0;
 }
 
 #healthText {
@@ -343,23 +306,154 @@ button:hover {
   height: 100%;
 }
 
+.layer-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 62px;
+  z-index: 1200;
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 255, 157, 0.7);
+  border-radius: 9px;
+  background: var(--hud-panel-strong);
+  box-shadow: var(--hud-shadow);
+}
+
+.layer-bar button[data-bottom-layer] {
+  border: 1px solid rgba(0, 255, 157, 0.5);
+  background: rgba(0, 18, 9, 0.5);
+  color: #d6ffea;
+  white-space: nowrap;
+}
+
+.layer-bar button[data-bottom-layer]:hover {
+  background: rgba(0, 255, 157, 0.14);
+  box-shadow:
+    inset 0 0 15px rgba(0, 255, 157, 0.19),
+    0 0 15px rgba(0, 255, 157, 0.42);
+}
+
+.layer-bar button[data-bottom-layer].is-active {
+  border-color: rgba(0, 255, 157, 0.96);
+  background: rgba(0, 255, 157, 0.2);
+  box-shadow:
+    inset 0 0 16px rgba(0, 255, 157, 0.29),
+    0 0 18px rgba(0, 255, 157, 0.62);
+}
+
+.layer-bar button[data-bottom-layer]:not(.is-active) {
+  opacity: 0.62;
+}
+
+.polling-indicator,
+.runtime-diagnostics-hud,
+.entity-info-panel,
+.tiles-fallback-banner {
+  right: 12px;
+  border: 1px solid var(--hud-border);
+  border-radius: 9px;
+  background: var(--hud-panel);
+  box-shadow: var(--hud-shadow);
+}
+
+.polling-indicator {
+  position: fixed;
+  top: 110px;
+  z-index: 1250;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #c6ffe4;
+}
+
+.runtime-diagnostics-hud {
+  position: fixed;
+  top: 220px;
+  z-index: 1240;
+  width: min(430px, calc(100vw - 24px));
+  padding: 10px 12px;
+  color: #c8ffe5;
+  font-size: 12px;
+}
+
+.runtime-diagnostics-hud .runtime-detail {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #aeffd9;
+}
+
+.entity-info-panel {
+  position: fixed;
+  top: 382px;
+  z-index: 1240;
+  width: min(304px, calc(100vw - 24px));
+  padding: 10px 12px;
+  color: #c8ffe5;
+}
+
+.entity-info-panel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.entity-info-panel p {
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+.hover-info {
+  position: fixed;
+  z-index: 1500;
+  display: none;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 255, 157, 0.73);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #d2ffeb;
+  box-shadow: 0 0 16px rgba(0, 255, 157, 0.3);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.tiles-fallback-banner {
+  position: fixed;
+  top: 110px;
+  z-index: 1300;
+  max-width: min(430px, calc(100vw - 24px));
+  padding: 9px 11px;
+  border-color: rgba(255, 85, 85, 0.8);
+  color: #ffdada;
+  box-shadow:
+    0 0 14px rgba(255, 85, 85, 0.38),
+    inset 0 0 14px rgba(255, 85, 85, 0.11);
+}
+
+.status-typewriter {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 1px solid rgba(0, 255, 157, 0.7);
+  animation: typewriter 1.05s steps(28, end) 1 both, caret-blink 850ms step-end infinite;
+}
+
 .cesium-timeline {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(1, 8, 5, 0.95) 100%) !important;
-  border-top: 1px solid rgba(43, 255, 184, 0.65);
-  box-shadow: 0 -8px 30px rgba(43, 255, 184, 0.14);
+  background: #000 !important;
+  border-top: 1px solid rgba(0, 255, 157, 0.62) !important;
+  box-shadow: 0 -10px 25px rgba(0, 255, 157, 0.2);
 }
 
 .cesium-timeline-ruler {
-  border-top: 1px solid rgba(255, 75, 75, 0.35) !important;
+  border-top: 1px solid rgba(0, 255, 157, 0.75) !important;
 }
 
-.cesium-animation-shuttleRingG {
-  stroke: rgba(255, 80, 80, 0.55) !important;
-}
-
-.cesium-animation,
-.cesium-timeline-bar {
+.cesium-timeline-bar,
+.cesium-animation {
   background: transparent !important;
 }
 
@@ -367,262 +461,69 @@ button:hover {
 .cesium-animation svg,
 .cesium-timeline,
 .cesium-timeline * {
-  color: #7dffd3 !important;
-  fill: #7dffd3 !important;
-  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  color: #b8ffde !important;
+  fill: #b8ffde !important;
+  font-family: 'Courier New', monospace !important;
+  font-size: 13px !important;
+  text-shadow: 0 0 8px rgba(0, 255, 157, 0.52);
 }
 
 .cesium-animation-rectButton {
-  border-color: rgba(43, 255, 184, 0.45) !important;
-  background: rgba(0, 18, 10, 0.5) !important;
+  border-color: rgba(0, 255, 157, 0.62) !important;
+  background: rgba(0, 16, 8, 0.75) !important;
 }
 
-.cesium-timeline-trackContainer {
-  border-top: 1px solid rgba(43, 255, 184, 0.4) !important;
-}
-
+.cesium-timeline-trackContainer,
 .cesium-timeline-main {
-  border-top: 1px solid rgba(43, 255, 184, 0.25) !important;
-}
-
-.cesium-viewer-animationContainer,
-.cesium-viewer-timelineContainer {
-  background: transparent !important;
+  border-top: 1px solid rgba(0, 255, 157, 0.42) !important;
 }
 
 .cesium-viewer-toolbar,
 .cesium-viewer-fullscreenContainer,
-.cesium-viewer-vrContainer {
-  filter: hue-rotate(70deg) saturate(0.75) brightness(0.8);
+.cesium-viewer-vrContainer,
+.cesium-viewer-navigationHelpButtonContainer,
+.cesium-viewer-geocoderContainer,
+.cesium-viewer-homeButtonContainer,
+.cesium-viewer-selectionIndicatorContainer,
+.cesium-viewer-infoBoxContainer {
+  display: none !important;
 }
 
-.layer-bar {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(0, 10, 6, 0.9) 0%, rgba(0, 0, 0, 0.94) 100%);
-  padding: 10px 16px;
-  border: 1px solid rgba(43, 255, 184, 0.62);
-  border-radius: 6px;
-  display: flex;
-  gap: 10px;
-  box-shadow:
-    inset 0 0 26px rgba(43, 255, 184, 0.08),
-    0 0 22px rgba(43, 255, 184, 0.22);
-  backdrop-filter: blur(3px);
-  z-index: 1200;
-}
-
-.layer-bar button[data-bottom-layer] {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  border: 1px solid rgba(43, 255, 184, 0.56);
-  background: rgba(0, 20, 12, 0.42);
-  color: #7dffd3;
-  padding: 6px 11px;
-  white-space: nowrap;
-  text-shadow: 0 0 8px rgba(125, 255, 211, 0.55);
-  box-shadow: inset 0 0 10px rgba(43, 255, 184, 0.08);
-  transition:
-    background 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
-}
-
-.layer-bar button[data-bottom-layer]:hover {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  background: rgba(43, 255, 184, 0.16);
-  border-color: rgba(125, 255, 211, 0.95);
-  color: #d8ffef;
-  box-shadow:
-    inset 0 0 16px rgba(43, 255, 184, 0.26),
-    0 0 16px rgba(43, 255, 184, 0.4);
-  transform: translateY(-1px);
-}
-
-.layer-bar button[data-bottom-layer].is-active {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  background: rgba(43, 255, 184, 0.18);
-  border-color: rgba(125, 255, 211, 0.95);
-  color: #e7fff4;
-  box-shadow:
-    inset 0 0 18px rgba(43, 255, 184, 0.28),
-    0 0 18px rgba(43, 255, 184, 0.38);
-}
-
-.layer-bar button[data-bottom-layer]:not(.is-active) {
-  opacity: 0.58;
-}
-
-.tiles-fallback-banner {
-  position: fixed;
-  right: 12px;
-  top: 108px;
-  z-index: 1400;
-  max-width: min(420px, calc(100vw - 24px));
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 150, 80, 0.85);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(35, 12, 0, 0.92) 0%, rgba(12, 5, 0, 0.96) 100%);
-  color: #ffd8b0;
-  font-size: 12px;
-  line-height: 1.4;
-  box-shadow:
-    inset 0 0 18px rgba(255, 163, 94, 0.18),
-    0 0 20px rgba(255, 120, 60, 0.28);
-}
-
-.runtime-diagnostics-hud {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  position: fixed;
-  right: 12px;
-  top: 220px;
-  z-index: 1400;
-  width: min(420px, calc(100vw - 24px));
-  padding: 10px 12px;
-  border: 1px solid rgba(43, 255, 184, 0.66);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(0, 16, 10, 0.92) 0%, rgba(0, 6, 3, 0.96) 100%);
-  color: #bfffe8;
-  font-size: 12px;
-  line-height: 1.4;
-  box-shadow:
-    inset 0 0 16px rgba(43, 255, 184, 0.16),
-    0 0 20px rgba(43, 255, 184, 0.18);
-}
-
-.runtime-diagnostics-hud .runtime-detail {
-  margin-bottom: 6px;
-  color: #9ff9d7;
-  font-size: 11px;
-}
-
-.runtime-diagnostics-hud .runtime-detail:last-child {
-  margin-bottom: 0;
-}
-
-.polling-indicator {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  position: fixed;
-  right: 12px;
-  top: 108px;
-  z-index: 1450;
-  max-width: min(560px, calc(100vw - 24px));
-  padding: 8px 10px;
-  border: 1px solid rgba(43, 255, 184, 0.68);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(0, 16, 10, 0.95) 0%, rgba(0, 6, 3, 0.98) 100%);
-  color: #c8ffeb;
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  box-shadow: inset 0 0 16px rgba(43, 255, 184, 0.14);
-}
-
-.hover-info {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  position: fixed;
-  z-index: 1600;
-  display: none;
-  min-width: 160px;
-  max-width: 240px;
-  padding: 8px 10px;
-  border: 1px solid rgba(43, 255, 184, 0.7);
-  border-radius: 6px;
-  background: rgba(0, 14, 8, 0.92);
-  color: #ceffef;
-  font-size: 11px;
-  line-height: 1.35;
-  pointer-events: none;
-  box-shadow: 0 0 16px rgba(43, 255, 184, 0.22);
-}
-
-.entity-info-panel {
-  /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
-  position: fixed;
-  top: 350px;
-  right: 12px;
-  z-index: 1450;
-  width: min(300px, calc(100vw - 24px));
-  padding: 10px 12px;
-  border: 1px solid var(--hud-border);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(0, 14, 9, 0.95) 0%, rgba(0, 5, 3, 0.98) 100%);
-  color: #c9ffec;
-  font-size: 12px;
-  box-shadow:
-    inset 0 0 14px rgba(43, 255, 184, 0.12),
-    0 0 18px rgba(43, 255, 184, 0.15);
-}
-
-.status-typewriter {
-  display: inline-block;
-  overflow: hidden;
-  border-right: 1px solid rgba(0, 255, 65, 0.7);
-  white-space: nowrap;
-  animation: typewriter 1.2s steps(28, end) 1 both, caret-blink 900ms step-end infinite;
+.cesium-widget-credits,
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer {
+  opacity: 0.82;
+  filter: grayscale(0.1) brightness(0.8) hue-rotate(60deg);
 }
 
 @keyframes crt-scan {
   0% {
-    transform: translateY(-4%);
+    transform: translateY(-3%);
   }
   100% {
-    transform: translateY(4%);
+    transform: translateY(3%);
   }
 }
 
-@keyframes phosphor-breathe {
+@keyframes phosphor-pulse {
   0%,
   100% {
-    opacity: 0.38;
+    opacity: 0.3;
   }
   50% {
-    opacity: 0.56;
+    opacity: 0.54;
   }
 }
 
-@keyframes top-secret-glitch {
+@keyframes classified-blink {
   0%,
-  18%,
-  22%,
+  48%,
   100% {
     opacity: 1;
-    transform: translateX(0);
   }
-  20% {
-    opacity: 0.72;
-    transform: translateX(-1px);
-  }
-  21% {
-    opacity: 0.94;
-    transform: translateX(1px);
-  }
-}
-
-@keyframes top-secret-random-a {
-  0%,
-  84%,
-  100% {
-    opacity: 0;
-  }
-  85%,
-  86% {
-    opacity: 0.34;
-  }
-}
-
-@keyframes top-secret-random-b {
-  0%,
-  92%,
-  100% {
-    opacity: 0;
-  }
-  93%,
-  94% {
-    opacity: 0.3;
+  49%,
+  53% {
+    opacity: 0.55;
   }
 }
 
@@ -638,45 +539,30 @@ button:hover {
 @keyframes caret-blink {
   0%,
   100% {
-    border-right-color: rgba(0, 255, 65, 0.7);
+    border-right-color: rgba(0, 255, 157, 0.72);
   }
   50% {
     border-right-color: transparent;
   }
 }
 
-.entity-info-panel h2 {
-  margin: 0 0 8px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.entity-info-panel p {
-  margin: 4px 0;
-  font-size: 11px;
-}
-
-.cesium-viewer-bottom {
-  left: 0;
-}
-
-@media (max-width: 900px) {
-  #toolbar {
+@media (max-width: 980px) {
+  .logo {
+    min-width: auto;
     width: calc(100vw - 24px);
-    max-height: 45vh;
-  }
-
-  .header {
-    top: 6px;
   }
 
   .logo h1 {
-    font-size: 18px;
+    font-size: 28px;
   }
 
   .header-meta {
-    display: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #toolbar {
+    width: calc(100vw - 24px);
+    max-height: 40vh;
   }
 
   .layer-bar {
@@ -690,6 +576,5 @@ button:hover {
   .runtime-diagnostics-hud,
   .entity-info-panel {
     width: calc(100vw - 24px);
-    right: 12px;
   }
 }
