@@ -3,15 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PhönixVision — Götterauge</title>
+    <title>WORLDVIEW — God’s Eye 4D Command Center</title>
   </head>
   <body>
     <div id="app" class="viewer">
+      <!-- // God’s Eye Original-Look – Bilawal-Video March 2026 -->
       <div class="header">
         <div class="logo">
-          <span class="top-secret">TOP SECRET // SI-TK // NOFORN</span>
-          <h1>PhönixVision</h1>
-          <span class="gods-eye">Götterauge • 4D COMMAND CENTER</span>
+          <span class="top-secret">TOP SECRET // SI-TK // NOFORN // ORCON</span>
+          <h1>WORLDVIEW</h1>
+          <span class="gods-eye">GOD’S EYE • 4D COMMAND CENTER</span>
+          <div class="header-meta" aria-hidden="true">
+            <span>THEATER: MENA</span>
+            <span>MODE: STRATEGIC ISR</span>
+            <span>CLEARANCE: TS/SCI</span>
+          </div>
         </div>
       </div>
 
@@ -32,6 +38,7 @@
           <label><input type="checkbox" data-layer="adsb" checked /> ADS-B</label>
           <label><input type="checkbox" data-layer="ais" checked /> AIS</label>
           <label><input type="checkbox" data-layer="jamming" checked /> GPS Jamming</label>
+          <label><input type="checkbox" data-layer="noFlyZones" checked /> No-Fly Zones</label>
           <label><input type="checkbox" data-layer="shaders" checked /> Shader Output</label>
         </section>
 
@@ -50,6 +57,7 @@
         <section class="toolbar-section" aria-label="Replay Export">
           <h2>Replay</h2>
           <button type="button" id="exportReplayButton">CZML Export herunterladen</button>
+          <button type="button" id="fullscreenButton">Fullscreen HUD</button>
         </section>
 
         <section class="toolbar-section" aria-label="Status">
@@ -62,6 +70,13 @@
           <h2>Attribution</h2>
           <p class="attribution-text">Google Photorealistic 3D Tiles • CesiumJS • OpenSky • Celestrak • Free-Tier Datenquellen</p>
         </section>
+      </aside>
+
+      <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling: init…</div>
+      <div id="hoverInfo" class="hover-info" aria-hidden="true"></div>
+      <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
+        <h2>Entity-Info</h2>
+        <p>Wähle ein Objekt auf der Karte aus.</p>
       </aside>
 
       <div id="cesiumContainer"></div>

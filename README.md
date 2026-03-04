@@ -8,7 +8,7 @@ Statischer Browser-Client mit CesiumJS + Google Photorealistic 3D Tiles + CZML-R
 - Cesium ion: Community Free Tier.
 - OpenSky: Polling mit niedriger Frequenz (10s) und Fallback.
 - Celestrak TLE: kostenlos.
-- Hosting: Azure Static Web Apps Free Tier.
+- Hosting: Vercel (primär), GitHub Pages (Fallback), Azure Static Web Apps (optional).
 
 ## Lokaler Start
 
@@ -34,15 +34,51 @@ Wichtige Variablen:
 - `VITE_CESIUM_ION_TOKEN`
 - `VITE_GOOGLE_MAP_TILES_KEY`
 - `VITE_ADSB_FALLBACK_URL`
+- `VITE_AIS_WS_URL` (optional für AIS Live-Websocket)
+- `VITE_AIS_WS_API_KEY` (optional, falls der AIS-Provider Auth benötigt)
 
-## Deployment (Azure Static Web Apps)
+## Live-Demo
 
-Workflow: [`Worldview/.github/workflows/azure-static-web-apps.yml`](Worldview/.github/workflows/azure-static-web-apps.yml)
+- Primär: Vercel Production URL (Projekt-Deployment)
+- Fallback: GitHub Pages (Workflow-gesteuert)
 
-Zusätzliches SWA Routing/Security: [`Worldview/staticwebapp.config.json`](Worldview/staticwebapp.config.json)
+Hinweis zur Sichtbarkeit der fotorealistischen 3D Tiles:
+- Wenn [`VITE_GOOGLE_MAP_TILES_KEY`](Worldview/.env.example) fehlt/ungültig ist, schaltet die App automatisch auf OSM-Globus-Fallback.
+- Das HUD zeigt dann einen klaren Laufzeit-Hinweis (Tiles Fallback Banner + Runtime Diagnostics).
 
-Benötigtes GitHub Secret:
-- `AZURE_STATIC_WEB_APPS_API_TOKEN`
+## Production Hosting (Vercel primary, GitHub Pages fallback, Azure optional)
+
+### Empfohlene Topologie
+
+- **Primär (Production): Vercel**
+  - Bestehende Live-URL bleibt der Standard-Endpunkt.
+  - Statisches Vite-Build (`dist`) wird direkt ausgeliefert.
+  - SPA-Rewrite ist über [`Worldview/vercel.json`](Worldview/vercel.json) explizit abgesichert.
+- **Fallback (Disaster Recovery): GitHub Pages**
+  - Automatischer Build/Deploy über [`Worldview/.github/workflows/github-pages.yml`](Worldview/.github/workflows/github-pages.yml).
+  - SPA-Fallback via `404.html` wird im Workflow aus `dist/index.html` erzeugt.
+- **Optional (nicht primär): Azure Static Web Apps**
+  - Bereits vorhanden über [`Worldview/.github/workflows/azure-static-web-apps.yml`](Worldview/.github/workflows/azure-static-web-apps.yml).
+  - Nur optionaler zusätzlicher Provider, keine harte Produktiv-Abhängigkeit.
+
+### Runbook: Provider-Failover (ohne Code-Änderung)
+
+1. **Vercel gesund?**
+   - Wenn ja: keine Aktion.
+2. **Vercel-Ausfall bestätigt**
+   - In GitHub Actions den Workflow [`Deploy to GitHub Pages`](Worldview/.github/workflows/github-pages.yml) per `workflow_dispatch` ausführen.
+3. **Pages-Deploy validieren**
+   - Prüfen, dass die Pages-URL lädt (Startseite + tiefer SPA-Pfad).
+4. **Traffic-Umschaltung**
+   - DNS/Link-Ziel auf GitHub Pages setzen (oder Statuspage/Kommunikationskanal auf Pages-URL aktualisieren).
+5. **Rückschwenk auf Vercel**
+   - Nach Recovery wieder Vercel als primären Endpunkt setzen.
+
+### Optionaler Azure-Pfad (nur wenn bewusst gewünscht)
+
+- Workflow: [`Worldview/.github/workflows/azure-static-web-apps.yml`](Worldview/.github/workflows/azure-static-web-apps.yml)
+- Zusätzliche SWA-Routing/Security-Konfiguration: [`Worldview/staticwebapp.config.json`](Worldview/staticwebapp.config.json)
+- Erforderliches Secret: `AZURE_STATIC_WEB_APPS_API_TOKEN`
 
 ## Production Readiness
 

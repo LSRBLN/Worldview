@@ -24,10 +24,129 @@ const container = document.getElementById('cesiumContainer');
 const statusText = document.getElementById('statusText');
 const healthText = document.getElementById('healthText');
 const exportReplayButton = document.getElementById('exportReplayButton') as HTMLButtonElement | null;
+const fullscreenButton = document.getElementById('fullscreenButton') as HTMLButtonElement | null;
+const hoverInfo = document.getElementById('hoverInfo') as HTMLDivElement | null;
+const entityInfoPanel = document.getElementById('entityInfoPanel') as HTMLDivElement | null;
+const pollingIndicator = document.getElementById('pollingIndicator') as HTMLDivElement | null;
+
+type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
+type FlightsFeedStatus = 'Initialisiere…' | 'OpenSky ok' | 'Fallback aktiv' | 'Demo/CZML Fallback' | 'Fehler';
+type AisFeedStatus = 'Initialisiere…' | 'AIS Live' | 'AIS Fallback' | 'Fehler';
+
+type RuntimeDiagnosticsState = {
+  tilesPath: TilesPathStatus;
+  tilesDetail: string;
+  flightsFeed: FlightsFeedStatus;
+  flightsDetail: string;
+  aisFeed: AisFeedStatus;
+  aisDetail: string;
+};
+
+type PollStatus = {
+  flights: string;
+  satellites: string;
+  ais: string;
+  updatedAt: string;
+};
+
+const runtimeDiagnostics: RuntimeDiagnosticsState = {
+  tilesPath: 'OSM Fallback',
+  tilesDetail: 'Initialisiere Tile-Pfad…',
+  flightsFeed: 'Initialisiere…',
+  flightsDetail: 'Warte auf ersten Feed-Poll…',
+  aisFeed: 'Initialisiere…',
+  aisDetail: 'AIS-Layer wird gestartet…'
+};
+
+const pollStatus: PollStatus = {
+  flights: 'init',
+  satellites: 'init',
+  ais: 'init',
+  updatedAt: '—'
+};
+
+function ensureRuntimeDiagnosticsHud(): HTMLDivElement {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // Produktions-Diagnostik sichtbar im HUD (Vercel vs. lokal).
+  const existing = document.getElementById('runtimeDiagnosticsHud') as HTMLDivElement | null;
+  if (existing) {
+    return existing;
+  }
+
+  const hud = document.createElement('div');
+  hud.id = 'runtimeDiagnosticsHud';
+  hud.className = 'runtime-diagnostics-hud';
+  document.body.appendChild(hud);
+  return hud;
+}
+
+function renderRuntimeDiagnosticsHud(): void {
+  const hud = ensureRuntimeDiagnosticsHud();
+  hud.innerHTML = `
+    <div><strong>Tiles:</strong> ${runtimeDiagnostics.tilesPath}</div>
+    <div class="runtime-detail">${runtimeDiagnostics.tilesDetail}</div>
+    <div><strong>Flights:</strong> ${runtimeDiagnostics.flightsFeed}</div>
+    <div class="runtime-detail">${runtimeDiagnostics.flightsDetail}</div>
+    <div><strong>AIS:</strong> ${runtimeDiagnostics.aisFeed}</div>
+    <div class="runtime-detail">${runtimeDiagnostics.aisDetail}</div>
+  `;
+}
+
+function updateRuntimeDiagnostics(partial: Partial<RuntimeDiagnosticsState>): void {
+  Object.assign(runtimeDiagnostics, partial);
+  renderRuntimeDiagnosticsHud();
+  console.info('[WorldView][RuntimeDiagnostics]', runtimeDiagnostics);
+}
+
+function renderPollingIndicator(): void {
+  if (!pollingIndicator) {
+    return;
+  }
+
+  pollingIndicator.textContent = `Polling • Flights: ${pollStatus.flights} • SAT: ${pollStatus.satellites} • AIS: ${pollStatus.ais} • ${pollStatus.updatedAt}`;
+}
+
+function markPollStatus(channel: keyof Omit<PollStatus, 'updatedAt'>, value: string): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  pollStatus[channel] = value;
+  pollStatus.updatedAt = new Date().toLocaleTimeString('de-DE', { hour12: false });
+  renderPollingIndicator();
+}
+
+function safeText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+  const text = String(value).trim();
+  return text.length > 0 ? text : '—';
+}
+
+console.info('[WorldView][Boot] DOM-Referenzen', {
+  hasContainer: Boolean(container),
+  hasStatusText: Boolean(statusText),
+  hasHealthText: Boolean(healthText),
+  hasExportReplayButton: Boolean(exportReplayButton)
+});
 
 if (!container) {
   throw new Error('cesiumContainer wurde nicht gefunden.');
 }
+
+console.info('[WorldView][Boot] Container-Größe beim Start', {
+  width: container.clientWidth,
+  height: container.clientHeight
+});
+
+const googleMapTilesKey = (import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined)?.trim();
+const aisWebSocketUrl = (import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim();
+const aisWebSocketApiKey = (import.meta.env.VITE_AIS_WS_API_KEY as string | undefined)?.trim();
+console.info('[WorldView][Env][Prod-Diagnose]', {
+  mode: import.meta.env.MODE,
+  prod: import.meta.env.PROD,
+  hasGoogleMapTilesKey: Boolean(googleMapTilesKey),
+  googleMapTilesKeyLength: googleMapTilesKey?.length ?? 0,
+  hasAisWebSocketUrl: Boolean(aisWebSocketUrl)
+});
 
 function setStatus(message: string): void {
   if (statusText) {
@@ -53,7 +172,6 @@ const cameraPresets: Record<CameraPresetKey, { lon: number; lat: number; height:
 
 const viewer = new Cesium.Viewer(container, {
   // Kostenfrei weil Free-Tier / GitHub Student Pack
-  globe: false,
   baseLayerPicker: false,
   geocoder: false,
   homeButton: true,
@@ -67,6 +185,144 @@ const viewer = new Cesium.Viewer(container, {
   maximumRenderTimeChange: Infinity
 });
 
+const pointerHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+function readEntityPosition(entity: Cesium.Entity): Cesium.Cartographic | null {
+  const positionProperty = entity.position;
+  if (!positionProperty) {
+    return null;
+  }
+
+  const position = positionProperty.getValue(viewer.clock.currentTime);
+  if (!position) {
+    return null;
+  }
+
+  return Cesium.Cartographic.fromCartesian(position);
+}
+
+function extractEntityMeta(entity: Cesium.Entity): { callsign: string; altitudeM: string; status: string; layer: string } {
+  const cartographic = readEntityPosition(entity);
+  const altitudeM = cartographic ? `${Math.max(0, cartographic.height).toFixed(0)} m` : '—';
+  const id = safeText(entity.id);
+  const name = safeText(entity.name);
+  const propertyBag = entity.properties as Cesium.PropertyBag | undefined;
+  const callsignValue = propertyBag?.getValue(viewer.clock.currentTime)?.callsign;
+  const jammingValue = propertyBag?.getValue(viewer.clock.currentTime)?.gpsJamming;
+  const callsign = safeText(callsignValue ?? (name !== '—' ? name : id));
+  const status = jammingValue === true ? 'Jamming Detected' : 'Tracking';
+
+  let layer = 'Unknown';
+  if (id.includes('adsb') || id.includes('flight') || id.includes('iran-flight')) {
+    layer = 'ADS-B';
+  } else if (id.includes('sat')) {
+    layer = 'Satellite';
+  } else if (id.includes('ais')) {
+    layer = 'AIS';
+  } else if (id.includes('jamming')) {
+    layer = 'Jamming Zone';
+  } else if (id.includes('no-fly')) {
+    layer = 'No-Fly Zone';
+  }
+
+  return { callsign, altitudeM, status, layer };
+}
+
+function renderEntityInfoPanel(entity: Cesium.Entity | null): void {
+  if (!entityInfoPanel) {
+    return;
+  }
+
+  if (!entity) {
+    entityInfoPanel.innerHTML = '<h2>Entity-Info</h2><p>Wähle ein Objekt auf der Karte aus.</p>';
+    return;
+  }
+
+  const meta = extractEntityMeta(entity);
+  entityInfoPanel.innerHTML = `
+    <h2>Entity-Info</h2>
+    <p><strong>ID:</strong> ${safeText(entity.id)}</p>
+    <p><strong>Callsign:</strong> ${meta.callsign}</p>
+    <p><strong>Layer:</strong> ${meta.layer}</p>
+    <p><strong>Altitude:</strong> ${meta.altitudeM}</p>
+    <p><strong>Status:</strong> ${meta.status}</p>
+  `;
+}
+
+function updateHoverInfo(x: number, y: number): void {
+  if (!hoverInfo) {
+    return;
+  }
+
+  const picked = viewer.scene.pick(new Cesium.Cartesian2(x, y));
+  if (!Cesium.defined(picked) || !(picked as { id?: unknown }).id) {
+    hoverInfo.style.display = 'none';
+    hoverInfo.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  const entity = (picked as { id: Cesium.Entity }).id;
+  const meta = extractEntityMeta(entity);
+  hoverInfo.style.display = 'block';
+  hoverInfo.setAttribute('aria-hidden', 'false');
+  hoverInfo.style.left = `${x + 14}px`;
+  hoverInfo.style.top = `${y + 14}px`;
+  hoverInfo.innerHTML = `<strong>${meta.callsign}</strong><br/>Alt: ${meta.altitudeM}<br/>${meta.status}`;
+}
+
+let activeFallbackImageryLayer: Cesium.ImageryLayer | null = null;
+
+function setSceneGlobeVisibility(show: boolean, context: string): void {
+  const globe = viewer.scene.globe;
+  if (!globe) {
+    console.warn('[WorldView][Guard] scene.globe ist undefined, show-Update übersprungen', {
+      context,
+      requestedShow: show
+    });
+    return;
+  }
+
+  globe.show = show;
+}
+
+function ensureVisibleFreeTierGlobeFallback(reason: string): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // Robuster kostenfreier Fallback: Globe + OSM-Imagery sichtbar, auch wenn Google Tiles fehlschlagen.
+  console.warn('[WorldView][Fallback] Aktiviere Globe/OSM Fallback', {
+    reason,
+    imageryLayerCountBefore: viewer.imageryLayers.length,
+    globeVisibleBefore: viewer.scene.globe?.show
+  });
+
+  setSceneGlobeVisibility(true, 'ensureVisibleFreeTierGlobeFallback');
+  if (viewer.scene.globe) {
+    viewer.scene.globe.baseColor = Cesium.Color.BLACK;
+  }
+
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // Keine Paid-API: Ellipsoid-Terrain + OpenStreetMap-Imagery als garantiert sichtbarer Fallback.
+  viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+
+  try {
+    viewer.imageryLayers.removeAll(true);
+    activeFallbackImageryLayer = viewer.imageryLayers.addImageryProvider(
+      new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://tile.openstreetmap.org/'
+      }),
+      0
+    );
+
+    console.info('[WorldView][Fallback] OSM-Imagery aktiv', {
+      imageryLayerCountAfter: viewer.imageryLayers.length,
+      hasActiveFallbackLayer: Boolean(activeFallbackImageryLayer)
+    });
+  } catch (fallbackError) {
+    console.error('[WorldView][Fallback] OSM-Imagery konnte nicht aktiviert werden', fallbackError);
+  }
+
+  viewer.scene.requestRender();
+}
+
 // Kostenfrei weil Free-Tier / GitHub Student Pack
 // Original Timeline & Replay-Fenster (God's Eye Stil)
 viewer.timeline.zoomTo(
@@ -77,10 +333,11 @@ viewer.timeline.zoomTo(
 if (viewer.scene.skyAtmosphere) {
   viewer.scene.skyAtmosphere.show = true;
 }
-viewer.scene.globe.show = false;
+setSceneGlobeVisibility(true, 'initial-viewer-boot');
 viewer.scene.fog.enabled = true;
 viewer.clock.multiplier = 300;
 viewer.clock.shouldAnimate = true;
+viewer.clock.multiplier = 480;
 
 // Kostenfrei weil Free-Tier / GitHub Student Pack
 Cesium.RequestScheduler.requestsByServer['tile.googleapis.com:443'] = 18;
@@ -90,6 +347,7 @@ const layerState: Record<string, boolean> = {
   adsb: true,
   ais: true,
   jamming: true,
+  noFlyZones: true,
   shaders: true
 };
 
@@ -97,7 +355,8 @@ const layerCollections = {
   satellites: new Cesium.CustomDataSource('satellites-live-layer'),
   adsb: new Cesium.CustomDataSource('adsb-live-layer'),
   ais: new Cesium.CustomDataSource('ais-layer'),
-  jamming: new Cesium.CustomDataSource('jamming-layer')
+  jamming: new Cesium.CustomDataSource('jamming-layer'),
+  noFlyZones: new Cesium.CustomDataSource('no-fly-zones-layer')
 };
 
 const replaySources = {
@@ -117,22 +376,69 @@ viewer.dataSources.add(layerCollections.satellites);
 viewer.dataSources.add(layerCollections.adsb);
 viewer.dataSources.add(layerCollections.ais);
 viewer.dataSources.add(layerCollections.jamming);
+viewer.dataSources.add(layerCollections.noFlyZones);
 viewer.dataSources.add(replaySources.satellites);
 viewer.dataSources.add(replaySources.adsb);
+
+// God’s Eye Original-Look – Bilawal-Video March 2026
+// Minimaler Layer-State + DataSource für No-Fly Zones (ohne Priorität 5 vorwegzunehmen).
+layerCollections.noFlyZones.entities.add({
+  id: 'no-fly-zone-demo-01',
+  name: 'No-Fly Zone Demo',
+  polygon: {
+    hierarchy: Cesium.Cartesian3.fromDegreesArray([
+      50.85, 33.7,
+      51.35, 33.7,
+      51.35, 34.05,
+      50.85, 34.05
+    ]),
+    // God’s Eye Original-Look – Bilawal-Video March 2026
+    material: Cesium.Color.RED.withAlpha(0.34),
+    outline: true,
+    outlineColor: Cesium.Color.RED.withAlpha(0.98)
+  },
+  label: {
+    text: 'NO-FLY',
+    font: '12pt monospace',
+    fillColor: Cesium.Color.RED,
+    outlineColor: Cesium.Color.BLACK,
+    outlineWidth: 2,
+    style: Cesium.LabelStyle.FILL_AND_OUTLINE
+  }
+});
 
 replaySources.adsb.clustering.enabled = true;
 replaySources.adsb.clustering.pixelRange = 15;
 replaySources.adsb.clustering.minimumClusterSize = 3;
 
 replaySources.adsb.clustering.clusterEvent.addEventListener((clusteredEntities, cluster) => {
-  cluster.label.show = true;
-  cluster.label.text = `${clusteredEntities.length}`;
-  cluster.label.scale = 0.7;
-  cluster.label.fillColor = Cesium.Color.CYAN;
-  cluster.billboard.show = false;
-  cluster.point.show = true;
-  cluster.point.pixelSize = 18;
-  cluster.point.color = Cesium.Color.CYAN.withAlpha(0.85);
+  console.debug('[WorldView][ClusterEvent] ADS-B Cluster Rendering', {
+    clusteredCount: clusteredEntities.length,
+    hasLabel: Boolean(cluster.label),
+    hasBillboard: Boolean(cluster.billboard),
+    hasPoint: Boolean(cluster.point)
+  });
+
+  try {
+    if (cluster.label) {
+      cluster.label.show = true;
+      cluster.label.text = `${clusteredEntities.length}`;
+      cluster.label.scale = 0.7;
+      cluster.label.fillColor = Cesium.Color.CYAN;
+    }
+
+    if (cluster.billboard) {
+      cluster.billboard.show = false;
+    }
+
+    if (cluster.point) {
+      cluster.point.show = true;
+      cluster.point.pixelSize = 18;
+      cluster.point.color = Cesium.Color.CYAN.withAlpha(0.85);
+    }
+  } catch (error) {
+    console.error('[WorldView][ClusterEvent] Fehler beim Styling des Clusters', error);
+  }
 });
 
 function setDataSourceVisibility(source: Cesium.DataSource | undefined, visible: boolean): void {
@@ -374,47 +680,94 @@ function downloadReplayExport(): void {
 }
 
 function createBottomLayerBar(): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  const existingBar = document.querySelector('.layer-bar');
+  if (existingBar) {
+    existingBar.remove();
+  }
+
   const bar = document.createElement('div');
   bar.className = 'layer-bar';
   bar.innerHTML = `
-    <button type="button" data-bottom-layer="adsb">✈️ Commercial & Military Flights</button>
-    <button type="button" data-bottom-layer="satellites">🛰️ Imaging Satellites</button>
-    <button type="button" data-bottom-layer="ais">🚢 Maritime Traffic</button>
-    <button type="button" data-bottom-layer="jamming">📡 GPS Jamming</button>
+    <button type="button" data-bottom-layer="adsb">✈️ Flights</button>
+    <button type="button" data-bottom-layer="satellites">🛰️ Satellites</button>
+    <button type="button" data-bottom-layer="ais">🚢 AIS</button>
+    <button type="button" data-bottom-layer="jamming">📡 Jamming</button>
+    <button type="button" data-bottom-layer="noFlyZones">☢️ No-Fly Zones</button>
   `;
 
   bar.querySelectorAll<HTMLButtonElement>('button[data-bottom-layer]').forEach((button) => {
     button.addEventListener('click', () => {
       const layer = button.dataset.bottomLayer;
-      if (!layer) {
+      if (!layer || !(layer in layerState)) {
         return;
       }
 
       const nextState = !layerState[layer];
       setLayerVisibility(layer, nextState);
-      button.style.opacity = nextState ? '1' : '0.45';
 
       const checkbox = document.querySelector<HTMLInputElement>(`input[data-layer="${layer}"]`);
       if (checkbox) {
         checkbox.checked = nextState;
       }
+
+      syncBottomLayerButtons();
     });
   });
 
   document.body.appendChild(bar);
+  syncBottomLayerButtons();
+}
+
+function syncBottomLayerButtons(): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  const buttons = document.querySelectorAll<HTMLButtonElement>('.layer-bar button[data-bottom-layer]');
+  buttons.forEach((button) => {
+    const layer = button.dataset.bottomLayer;
+    if (!layer || !(layer in layerState)) {
+      return;
+    }
+
+    const isActive = Boolean(layerState[layer]);
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
 }
 
 async function loadDemoReplayFromPublicData(): Promise<void> {
   try {
-    const demoCzml = await Cesium.CzmlDataSource.load('/data/iran-demo.czml');
+    // God’s Eye Original-Look – Bilawal-Video March 2026
+    setStatus('Demo-CZML wird geprüft…');
+    const response = await fetch('/data/iran-demo.czml', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Demo-CZML HTTP ${response.status}`);
+    }
+
+    const demoJson = (await response.json()) as object[];
+    const demoCzml = await Cesium.CzmlDataSource.load(demoJson);
     viewer.dataSources.add(demoCzml);
+
+    const demoClock = demoCzml.clock;
+    if (demoClock) {
+      viewer.clock.startTime = demoClock.startTime.clone();
+      viewer.clock.stopTime = demoClock.stopTime.clone();
+      viewer.clock.currentTime = demoClock.currentTime.clone();
+      viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
+      viewer.clock.multiplier = 480;
+    }
+
     setStatus('Demo-Replay geladen: iran-demo.czml');
   } catch (error) {
     console.warn('Demo-CZML konnte nicht geladen werden', error);
+    setStatus('Demo-CZML fehlgeschlagen • nutze internes Multi-Part Replay');
   }
 }
 
-const liveSatellites = new Map<string, { satrec: SatRec; entity: Cesium.Entity }>();
+const liveSatellites = new Map<string, {
+  satrec: SatRec;
+  entity: Cesium.Entity;
+  track: Cesium.SampledPositionProperty;
+}>();
 
 function upsertLiveSatellite(name: string, satrec: SatRec): void {
   const now = new Date();
@@ -431,31 +784,49 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
   const lat = degreesLat(geodetic.latitude);
   const height = geodetic.height * 1000;
   const cartesian = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+  const nowJulian = Cesium.JulianDate.fromDate(now);
 
   if (!liveSatellites.has(name)) {
+    const sampledTrack = new Cesium.SampledPositionProperty();
+    sampledTrack.setInterpolationOptions({
+      interpolationAlgorithm: Cesium.LinearApproximation,
+      interpolationDegree: 1
+    });
+    sampledTrack.addSample(nowJulian, cartesian);
+
     const entity = layerCollections.satellites.entities.add({
       id: `live-sat-${name}`,
       name,
-      position: cartesian,
+      position: sampledTrack,
       point: {
-        pixelSize: 5,
-        color: Cesium.Color.YELLOW
+        pixelSize: 7,
+        color: Cesium.Color.YELLOW,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1
       },
       label: {
         text: name,
         font: '10pt monospace',
         fillColor: Cesium.Color.YELLOW,
         pixelOffset: new Cesium.Cartesian2(10, -10)
+      },
+      path: {
+        // God’s Eye Original-Look – Bilawal-Video March 2026
+        resolution: 120,
+        width: 1.1,
+        leadTime: 0,
+        trailTime: 1800,
+        material: Cesium.Color.YELLOW.withAlpha(0.7)
       }
     });
 
-    liveSatellites.set(name, { satrec, entity });
+    liveSatellites.set(name, { satrec, entity, track: sampledTrack });
     return;
   }
 
   const existing = liveSatellites.get(name);
   if (existing) {
-    existing.entity.position = new Cesium.ConstantPositionProperty(cartesian);
+    existing.track.addSample(nowJulian, cartesian);
     existing.satrec = satrec;
   }
 }
@@ -497,10 +868,12 @@ async function pollCelestrakLayer(): Promise<void> {
 
     setStatus('Live-Satelliten aktualisiert (Celestrak Free Feed).');
     setHealth('Netzwerk: online • Celestrak ok');
+    markPollStatus('satellites', 'ok');
     viewer.scene.requestRender();
   } catch (error) {
     console.warn('Celestrak Polling fehlgeschlagen', error);
     setHealth('Netzwerk: degradiert • Celestrak temporär nicht erreichbar');
+    markPollStatus('satellites', 'fallback');
   }
 }
 
@@ -515,15 +888,23 @@ async function pollAdsbLayer(): Promise<void> {
       (import.meta.env.VITE_ADSB_FALLBACK_URL as string | undefined) ??
       'https://opendata.adsb.fi/api/v2/lat/24/lon/44/dist/220';
 
+    const openskyUrl = 'https://opensky-network.org/api/states/all?lamin=24&lomin=44&lamax=40&lomax=64';
+
     // Kostenfrei weil Free-Tier / GitHub Student Pack
     // OpenSky free endpoint mit niedriger Poll-Frequenz.
-    let response = await fetch('https://opensky-network.org/api/states/all?lamin=24&lomin=44&lamax=40&lomax=64');
+    let response = await fetch(openskyUrl);
+    let activeFeedLabel = 'OpenSky';
     let data: {
       states?: Array<(string | number | null)[]>;
     };
 
-    if (response.status === 429) {
-      setHealth('OpenSky Rate-Limit • nutze ADS-B Fallback');
+    if (!response.ok) {
+      console.warn('[WorldView][Flights] OpenSky fehlgeschlagen, nutze Fallback', {
+        status: response.status,
+        statusText: response.statusText
+      });
+      setHealth(`OpenSky Fehler ${response.status} • nutze ADS-B Fallback`);
+      activeFeedLabel = 'ADS-B Fallback';
       response = await fetch(adsbFallbackUrl);
     }
 
@@ -566,6 +947,7 @@ async function pollAdsbLayer(): Promise<void> {
     layerCollections.adsb.entities.removeAll();
     const maxFlights = 120;
     const states = data.states ?? [];
+    let renderedFlights = 0;
 
     for (let i = 0; i < Math.min(states.length, maxFlights); i += 1) {
       const state = states[i];
@@ -578,38 +960,90 @@ async function pollAdsbLayer(): Promise<void> {
         continue;
       }
 
+      const isBlue = i % 2 === 0;
+
       layerCollections.adsb.entities.add({
         id: `adsb-live-${callsign}-${i}`,
+        name: callsign,
         position: Cesium.Cartesian3.fromDegrees(lon, lat, altitude),
-        point: {
-          pixelSize: 4,
-          color: Cesium.Color.CYAN
+        billboard: {
+          // God’s Eye Original-Look – Bilawal-Video March 2026
+          image: isBlue
+            ? 'https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/plane-blue.png'
+            : 'https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/plane-red.png',
+          scale: 0.46,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          color: isBlue ? Cesium.Color.CYAN.withAlpha(0.95) : Cesium.Color.RED.withAlpha(0.95)
+        },
+        path: {
+          resolution: 120,
+          width: 1,
+          leadTime: 600,
+          trailTime: 1200,
+          material: isBlue ? Cesium.Color.CYAN.withAlpha(0.56) : Cesium.Color.RED.withAlpha(0.56)
         },
         label: {
           text: callsign,
           font: '9pt monospace',
-          fillColor: Cesium.Color.CYAN,
+          fillColor: isBlue ? Cesium.Color.CYAN : Cesium.Color.RED,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset: new Cesium.Cartesian2(8, -8),
           show: false
+        },
+        properties: {
+          callsign,
+          altitude,
+          status: isBlue ? 'FRIENDLY' : 'HOSTILE'
         }
+      });
+
+      renderedFlights += 1;
+    }
+
+    if (renderedFlights === 0) {
+      // God’s Eye Original-Look – Bilawal-Video March 2026
+      // Produktions-Hardening: Bei leerem API-Response bleibt Flug-Layer sichtbar (Replay/CZML).
+      setDataSourceVisibility(replaySources.adsb, true);
+      updateRuntimeDiagnostics({
+        flightsFeed: 'Demo/CZML Fallback',
+        flightsDetail: `${activeFeedLabel} lieferte 0 Flights • Replay/CZML sichtbar`
+      });
+    } else {
+      updateRuntimeDiagnostics({
+        flightsFeed: activeFeedLabel === 'OpenSky' ? 'OpenSky ok' : 'Fallback aktiv',
+        flightsDetail: `${activeFeedLabel} • ${renderedFlights} Flights gerendert`
       });
     }
 
-    setStatus('Live ADS-B aktualisiert (OpenSky Free Feed).');
-    setHealth('Netzwerk: online • ADS-B ok');
+    setStatus(`Live ADS-B aktualisiert (${activeFeedLabel}).`);
+    setHealth(`Netzwerk: online • Flights: ${activeFeedLabel}`);
+    markPollStatus('flights', activeFeedLabel === 'OpenSky' ? 'ok' : 'fallback');
     viewer.scene.requestRender();
   } catch (error) {
     console.warn('ADS-B Polling fehlgeschlagen', error);
+    // God’s Eye Original-Look – Bilawal-Video March 2026
+    // Produktions-Hardening: Bei API/CORS/Rate-Limit Fehlern bleibt mindestens Replay/CZML-Flugverkehr sichtbar.
+    layerCollections.adsb.entities.removeAll();
+    setDataSourceVisibility(replaySources.adsb, true);
+    updateRuntimeDiagnostics({
+      flightsFeed: 'Demo/CZML Fallback',
+      flightsDetail: 'Live-Feed ausgefallen (API/CORS/Rate-Limit) • Replay/CZML bleibt aktiv'
+    });
     setHealth('Netzwerk: degradiert • ADS-B Feed temporär nicht erreichbar');
+    markPollStatus('flights', 'fallback');
   }
 }
 
 function buildAisFallbackLayer(): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // Lokaler AIS-Fallback bleibt immer sichtbar, falls Live-Feed ausfällt oder nicht konfiguriert ist.
   layerCollections.ais.entities.removeAll();
   const fallbackShips = [
-    { id: 'ais-1', lon: 56.35, lat: 26.5, speed: 0.03 },
-    { id: 'ais-2', lon: 56.45, lat: 26.25, speed: 0.02 },
-    { id: 'ais-3', lon: 56.65, lat: 26.0, speed: 0.025 }
+    { id: 'ais-fallback-1', name: 'MT HORMUZ STAR', lon: 56.35, lat: 26.5, speed: 0.032 },
+    { id: 'ais-fallback-2', name: 'MV GULF LINK', lon: 56.45, lat: 26.25, speed: 0.021 },
+    { id: 'ais-fallback-3', name: 'IRISL BANDAR', lon: 56.65, lat: 26.0, speed: 0.026 }
   ];
 
   fallbackShips.forEach((ship) => {
@@ -623,17 +1057,347 @@ function buildAisFallbackLayer(): void {
       }, false),
       billboard: {
         image: 'https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/ship-white.png',
-        scale: 0.38
+        scale: 0.45,
+        color: Cesium.Color.CYAN.withAlpha(0.92)
+      },
+      label: {
+        text: ship.name,
+        font: '10pt monospace',
+        fillColor: Cesium.Color.CYAN,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(10, -10),
+        show: true
       },
       path: {
         resolution: 120,
         width: 1,
-        leadTime: 900,
-        trailTime: 900,
-        material: Cesium.Color.WHITE.withAlpha(0.7)
+        leadTime: 0,
+        trailTime: 1800,
+        material: Cesium.Color.CYAN.withAlpha(0.55)
       }
     });
   });
+}
+
+type ParsedAisShip = {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+  speedKnots?: number;
+  courseDegrees?: number;
+};
+
+type AisTrack = {
+  id: string;
+  name: string;
+  position: Cesium.SampledPositionProperty;
+  entity: Cesium.Entity;
+  lastSeenEpochMs: number;
+};
+
+const liveAisTracks = new Map<string, AisTrack>();
+let aisSocket: WebSocket | null = null;
+let aisSocketWasClosedIntentionally = false;
+let aisLastLiveMessageEpochMs = 0;
+let aisWatchdogIntervalId: number | null = null;
+
+function closeAisSocket(): void {
+  aisSocketWasClosedIntentionally = true;
+  if (!aisSocket) {
+    return;
+  }
+
+  try {
+    aisSocket.close();
+  } catch (error) {
+    console.warn('[WorldView][AIS] Socket konnte nicht geschlossen werden', error);
+  }
+
+  aisSocket = null;
+}
+
+function parseFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseAisShipsFromMessage(payload: unknown): ParsedAisShip[] {
+  const ships: ParsedAisShip[] = [];
+
+  if (!payload || typeof payload !== 'object') {
+    return ships;
+  }
+
+  const source = payload as Record<string, unknown>;
+
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // AISStream-kompatibles Format (MessageType/MetaData/Message.PositionReport) + generische Fallback-Formate.
+  const positionReport = (source.Message as Record<string, unknown> | undefined)?.PositionReport as Record<string, unknown> | undefined;
+  const metadata = source.MetaData as Record<string, unknown> | undefined;
+
+  if (positionReport) {
+    const lat = parseFiniteNumber(positionReport.Latitude);
+    const lon = parseFiniteNumber(positionReport.Longitude);
+    const mmsi = String(metadata?.MMSI ?? positionReport.UserID ?? '').trim();
+
+    if (lat !== null && lon !== null && mmsi.length > 0) {
+      ships.push({
+        id: mmsi,
+        name: String(metadata?.ShipName ?? metadata?.CallSign ?? `MMSI ${mmsi}`).trim(),
+        lat,
+        lon,
+        speedKnots: parseFiniteNumber(positionReport.Sog) ?? undefined,
+        courseDegrees: parseFiniteNumber(positionReport.Cog) ?? undefined
+      });
+      return ships;
+    }
+  }
+
+  const candidateArray = Array.isArray(source.ships)
+    ? (source.ships as unknown[])
+    : Array.isArray(source.data)
+      ? (source.data as unknown[])
+      : Array.isArray(payload)
+        ? (payload as unknown[])
+        : [];
+
+  candidateArray.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const lat = parseFiniteNumber(record.lat ?? record.latitude ?? record.Latitude);
+    const lon = parseFiniteNumber(record.lon ?? record.lng ?? record.longitude ?? record.Longitude);
+    const id = String(record.mmsi ?? record.MMSI ?? record.id ?? '').trim();
+    if (lat === null || lon === null || id.length === 0) {
+      return;
+    }
+
+    ships.push({
+      id,
+      name: String(record.name ?? record.shipName ?? record.vessel ?? `MMSI ${id}`).trim(),
+      lat,
+      lon,
+      speedKnots: parseFiniteNumber(record.sog ?? record.speed ?? record.SOG) ?? undefined,
+      courseDegrees: parseFiniteNumber(record.cog ?? record.course ?? record.COG) ?? undefined
+    });
+  });
+
+  return ships;
+}
+
+function pruneStaleAisTracks(nowEpochMs: number): void {
+  const staleAfterMs = 15 * 60 * 1000;
+  liveAisTracks.forEach((track, id) => {
+    if (nowEpochMs - track.lastSeenEpochMs <= staleAfterMs) {
+      return;
+    }
+
+    layerCollections.ais.entities.remove(track.entity);
+    liveAisTracks.delete(id);
+  });
+}
+
+function upsertLiveAisShip(ship: ParsedAisShip, nowEpochMs: number): void {
+  const currentJulian = Cesium.JulianDate.fromDate(new Date(nowEpochMs));
+  const position = Cesium.Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
+  const normalizedName = ship.name.length > 0 ? ship.name : `MMSI ${ship.id}`;
+
+  const existing = liveAisTracks.get(ship.id);
+  if (!existing) {
+    const sampled = new Cesium.SampledPositionProperty();
+    sampled.setInterpolationOptions({
+      interpolationAlgorithm: Cesium.LinearApproximation,
+      interpolationDegree: 1
+    });
+    sampled.addSample(currentJulian, position);
+
+    const entity = layerCollections.ais.entities.add({
+      id: `ais-live-${ship.id}`,
+      name: normalizedName,
+      position: sampled,
+      billboard: {
+        image: 'https://cdn.jsdelivr.net/gh/cesiumlab/aircraft-icons@main/ship-white.png',
+        scale: 0.48,
+        color: Cesium.Color.CYAN.withAlpha(0.94)
+      },
+      label: {
+        text: normalizedName,
+        font: '10pt monospace',
+        fillColor: Cesium.Color.CYAN,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(10, -10),
+        show: true
+      },
+      path: {
+        resolution: 120,
+        width: 1,
+        leadTime: 0,
+        trailTime: 1800,
+        material: Cesium.Color.CYAN.withAlpha(0.58)
+      }
+    });
+
+    liveAisTracks.set(ship.id, {
+      id: ship.id,
+      name: normalizedName,
+      position: sampled,
+      entity,
+      lastSeenEpochMs: nowEpochMs
+    });
+    return;
+  }
+
+  existing.position.addSample(currentJulian, position);
+  existing.lastSeenEpochMs = nowEpochMs;
+  existing.name = normalizedName;
+  if (existing.entity.label) {
+    existing.entity.label.text = new Cesium.ConstantProperty(normalizedName);
+  }
+}
+
+function switchToAisFallback(reason: string): void {
+  closeAisSocket();
+  liveAisTracks.clear();
+  buildAisFallbackLayer();
+  updateRuntimeDiagnostics({
+    aisFeed: 'AIS Fallback',
+    aisDetail: reason
+  });
+  setStatus('AIS läuft im Fallback-Modus (lokale Simulation).');
+  markPollStatus('ais', 'fallback');
+  viewer.scene.requestRender();
+}
+
+function startAisLiveFeed(): void {
+  if (!layerState.ais) {
+    return;
+  }
+
+  if (!navigator.onLine) {
+    switchToAisFallback('Offline erkannt • lokale AIS-Simulation aktiv');
+    return;
+  }
+
+  if (!aisWebSocketUrl) {
+    switchToAisFallback('VITE_AIS_WS_URL nicht gesetzt • lokale AIS-Simulation aktiv');
+    return;
+  }
+
+  closeAisSocket();
+  aisSocketWasClosedIntentionally = false;
+  updateRuntimeDiagnostics({
+    aisFeed: 'Initialisiere…',
+    aisDetail: 'Verbinde AIS-WebSocket…'
+  });
+
+  try {
+    aisSocket = new WebSocket(aisWebSocketUrl);
+  } catch (error) {
+    console.warn('[WorldView][AIS] WebSocket-Initialisierung fehlgeschlagen', error);
+    switchToAisFallback('AIS-WebSocket konnte nicht initialisiert werden • Fallback aktiv');
+    return;
+  }
+
+  aisSocket.addEventListener('open', () => {
+    // God’s Eye Original-Look – Bilawal-Video March 2026
+    // Optionaler AISStream-Handshake für kostenfreie Public/Student-Feeds.
+    if (aisWebSocketApiKey) {
+      aisSocket?.send(
+        JSON.stringify({
+          APIKey: aisWebSocketApiKey,
+          BoundingBoxes: [
+            [
+              [24, 44],
+              [40, 64]
+            ]
+          ]
+        })
+      );
+    }
+
+    updateRuntimeDiagnostics({
+      aisFeed: 'Initialisiere…',
+      aisDetail: 'AIS-WebSocket verbunden • warte auf Positionsdaten'
+    });
+  });
+
+  aisSocket.addEventListener('message', (event) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(event.data as string);
+    } catch (error) {
+      console.debug('[WorldView][AIS] Nicht-JSON Nachricht ignoriert', error);
+      return;
+    }
+
+    const ships = parseAisShipsFromMessage(payload);
+    if (ships.length === 0) {
+      return;
+    }
+
+    if (liveAisTracks.size === 0) {
+      layerCollections.ais.entities.removeAll();
+    }
+
+    const nowEpochMs = Date.now();
+    aisLastLiveMessageEpochMs = nowEpochMs;
+    ships.forEach((ship) => {
+      upsertLiveAisShip(ship, nowEpochMs);
+    });
+    pruneStaleAisTracks(nowEpochMs);
+
+    updateRuntimeDiagnostics({
+      aisFeed: 'AIS Live',
+      aisDetail: `WebSocket live • ${liveAisTracks.size} Schiffe sichtbar`
+    });
+    setStatus('AIS Live-Feed aktiv.');
+    markPollStatus('ais', 'ok');
+    viewer.scene.requestRender();
+  });
+
+  aisSocket.addEventListener('error', () => {
+    switchToAisFallback('AIS-WebSocket Fehler • lokale AIS-Simulation aktiv');
+  });
+
+  aisSocket.addEventListener('close', () => {
+    if (aisSocketWasClosedIntentionally) {
+      return;
+    }
+    switchToAisFallback('AIS-WebSocket geschlossen • lokale AIS-Simulation aktiv');
+  });
+
+  if (aisWatchdogIntervalId === null) {
+    aisWatchdogIntervalId = window.setInterval(() => {
+      if (!aisWebSocketUrl) {
+        return;
+      }
+      if (!navigator.onLine) {
+        return;
+      }
+      if (!aisSocket || aisSocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      if (aisLastLiveMessageEpochMs === 0) {
+        return;
+      }
+
+      const silenceThresholdMs = 45 * 1000;
+      const silenceMs = Date.now() - aisLastLiveMessageEpochMs;
+      if (silenceMs > silenceThresholdMs) {
+        switchToAisFallback('AIS Live-Timeout (>45s ohne Daten) • lokale AIS-Simulation aktiv');
+      }
+    }, 15 * 1000);
+  }
 }
 
 function buildJammingLayerFromReplay(): void {
@@ -649,14 +1413,17 @@ function buildJammingLayerFromReplay(): void {
         56.6, 25.8,
         55.9, 25.8
       ]),
-      material: Cesium.Color.RED.withAlpha(0.2),
+      material: Cesium.Color.RED.withAlpha(0.35),
       outline: true,
-      outlineColor: Cesium.Color.RED
+      outlineColor: Cesium.Color.RED.withAlpha(0.98)
     },
     label: {
       text: 'GPS Jamming Zone',
       font: '11pt monospace',
-      fillColor: Cesium.Color.RED
+      fillColor: Cesium.Color.RED,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE
     }
   });
 }
@@ -681,7 +1448,7 @@ const crtStage = new Cesium.PostProcessStage({
     }
   `,
   uniforms: {
-    u_intensity: 0.65
+    u_intensity: 0.34
   }
 });
 
@@ -702,8 +1469,8 @@ const nvgStage = new Cesium.PostProcessStage({
       vec2 uv = v_textureCoordinates;
       vec4 color = texture(colorTexture, uv);
       float luma = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
-      float noise = (random(uv * 1200.0) - 0.5) * 0.10 * u_intensity;
-      vec3 nvg = vec3(0.05, 1.0, 0.22) * (luma + noise + 0.08 * u_intensity);
+      float noise = (random(uv * 2300.0) - 0.5) * 0.18 * u_intensity;
+      vec3 nvg = vec3(0.03, 1.0, 0.12) * (luma + noise + 0.15 * u_intensity);
       fragColor = vec4(clamp(nvg, 0.0, 1.0), color.a);
     }
   `,
@@ -735,8 +1502,9 @@ const flirStage = new Cesium.PostProcessStage({
       vec2 uv = v_textureCoordinates;
       vec4 color = texture(colorTexture, uv);
       float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-      float thermal = pow(luma, mix(1.4, 0.55, u_intensity));
-      vec3 flir = heatRamp(clamp(thermal, 0.0, 1.0));
+      float thermal = pow(luma, mix(1.65, 0.42, u_intensity));
+      thermal = smoothstep(0.06, 0.94, thermal);
+      vec3 flir = heatRamp(clamp(thermal * 1.12, 0.0, 1.0));
       fragColor = vec4(flir, color.a);
     }
   `,
@@ -752,23 +1520,19 @@ viewer.scene.postProcessStages.add(flirStage);
 let activeShaderMode: ShaderMode = 'none';
 
 function setShaderIntensity(intensity: number): void {
-  crtStage.uniforms.u_intensity = intensity;
+  crtStage.uniforms.u_intensity = Math.max(0.2, intensity * 0.42);
   nvgStage.uniforms.u_intensity = intensity;
-  flirStage.uniforms.u_intensity = intensity;
+  flirStage.uniforms.u_intensity = Math.max(1.2, intensity * 2.15);
   viewer.scene.requestRender();
 }
 
 function setShaderMode(mode: ShaderMode): void {
   activeShaderMode = mode;
 
-  if (mode === 'flir') {
-    // Kostenfrei weil Free-Tier / GitHub Student Pack
-    // Stärkeres Thermal-Profil wie im Original-Look.
-    flirStage.uniforms.u_intensity = 1.8;
-  }
-
   const shadersEnabled = layerState.shaders;
-  crtStage.enabled = shadersEnabled && mode === 'crt';
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  // CRT bleibt subtil permanent aktiv, FLIR/NVG werden zusätzlich je nach Modus geschaltet.
+  crtStage.enabled = shadersEnabled;
   nvgStage.enabled = shadersEnabled && mode === 'nvg';
   flirStage.enabled = shadersEnabled && mode === 'flir';
 
@@ -778,10 +1542,15 @@ function setShaderMode(mode: ShaderMode): void {
 }
 
 function setLayerVisibility(layer: string, visible: boolean): void {
+  if (!(layer in layerState)) {
+    return;
+  }
+
   layerState[layer] = visible;
 
   if (layer === 'shaders') {
     setShaderMode(activeShaderMode);
+    syncBottomLayerButtons();
     return;
   }
 
@@ -798,6 +1567,8 @@ function setLayerVisibility(layer: string, visible: boolean): void {
     setDataSourceVisibility(replaySources.adsb, visible);
   }
 
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  syncBottomLayerButtons();
   setStatus(`Layer ${layer.toUpperCase()}: ${visible ? 'aktiv' : 'aus'}`);
   viewer.scene.requestRender();
 }
@@ -837,6 +1608,7 @@ function bindToolbarEvents(): void {
         return;
       }
       setLayerVisibility(layer, checkbox.checked);
+      syncBottomLayerButtons();
     });
   });
 
@@ -863,33 +1635,90 @@ function bindToolbarEvents(): void {
     });
   }
 
+  if (fullscreenButton) {
+    fullscreenButton.addEventListener('click', async () => {
+      // God’s Eye Original-Look – Bilawal-Video March 2026
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setStatus('Fullscreen HUD aktiviert');
+      } else {
+        await document.exitFullscreen();
+        setStatus('Fullscreen HUD deaktiviert');
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.fullscreenElement) {
+      void document.exitFullscreen();
+      setStatus('Fullscreen HUD per ESC beendet');
+    }
+  });
+
   window.addEventListener('online', () => {
     setHealth('Netzwerk: online');
     void pollCelestrakLayer();
     void pollAdsbLayer();
+    startAisLiveFeed();
   });
 
   window.addEventListener('offline', () => {
     setHealth('Netzwerk: offline • Live-Feeds pausiert');
+    switchToAisFallback('Offline erkannt • lokale AIS-Simulation aktiv');
   });
 }
 
-async function addGooglePhotorealisticTiles(): Promise<void> {
-  try {
-    // Kostenfrei weil Free-Tier / GitHub Student Pack
-    const googleTileset = await Cesium.createGooglePhotorealistic3DTileset();
-    viewer.scene.primitives.add(googleTileset);
-    setStatus('Google Photorealistic 3D Tiles aktiv (Cesium Helper).');
-  } catch (error) {
-    const googleApiKey = import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined;
-    if (!googleApiKey) {
-      console.error('Google Photorealistic 3D Tiles konnten nicht geladen werden.', error);
-      setStatus('Fehler: Google Tiles nicht geladen. API-Key fehlt.');
+function bindInteractionHandlers(): void {
+  // God’s Eye Original-Look – Bilawal-Video March 2026
+  pointerHandler.setInputAction((movement: { endPosition: Cesium.Cartesian2 }) => {
+    updateHoverInfo(movement.endPosition.x, movement.endPosition.y);
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  pointerHandler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+    const picked = viewer.scene.pick(click.position);
+    if (!Cesium.defined(picked) || !(picked as { id?: unknown }).id) {
+      renderEntityInfoPanel(null);
       return;
     }
 
+    const entity = (picked as { id: Cesium.Entity }).id;
+    renderEntityInfoPanel(entity);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
+
+async function addGooglePhotorealisticTiles(): Promise<void> {
+  const showTilesFallbackOverlay = (details: string): void => {
+    const id = 'tilesFallbackBanner';
+    const existing = document.getElementById(id);
+    if (existing) {
+      existing.textContent = details;
+      return;
+    }
+
+    const banner = document.createElement('div');
+    banner.id = id;
+    banner.className = 'tiles-fallback-banner';
+    banner.textContent = details;
+    document.body.appendChild(banner);
+  };
+
+  const googleApiKey = googleMapTilesKey;
+
+  if (!googleApiKey) {
+    updateRuntimeDiagnostics({
+      tilesPath: 'OSM Fallback',
+      tilesDetail: 'VITE_GOOGLE_MAP_TILES_KEY fehlt/leer (Vercel Project Settings → Environment Variables)'
+    });
+  }
+
+  try {
+    if (!googleApiKey) {
+      throw new Error('Kein VITE_GOOGLE_MAP_TILES_KEY gesetzt');
+    }
+
+    console.info('[WorldView][Tiles] Starte direkten Google API-Key Pfad');
     // Kostenfrei weil Free-Tier / GitHub Student Pack
-    const fallbackTileset = await Cesium.Cesium3DTileset.fromUrl(
+    const googleTileset = await Cesium.Cesium3DTileset.fromUrl(
       `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
       {
         showCreditsOnScreen: true,
@@ -897,8 +1726,43 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
       }
     );
 
-    viewer.scene.primitives.add(fallbackTileset);
+    viewer.scene.primitives.add(googleTileset);
+    setSceneGlobeVisibility(false, 'google-direct-tileset-ready');
+    updateRuntimeDiagnostics({
+      tilesPath: 'Google Direct',
+      tilesDetail: 'Direkter Google Map Tiles API-Key Pfad aktiv'
+    });
     setStatus('Google Photorealistic 3D Tiles aktiv (direkte Google API).');
+  } catch (directError) {
+    console.warn('[WorldView][Tiles] Direkter API-Key Pfad fehlgeschlagen, versuche Cesium Helper', directError);
+
+    try {
+      // Kostenfrei weil Free-Tier / GitHub Student Pack
+      const helperTileset = await Cesium.createGooglePhotorealistic3DTileset();
+      viewer.scene.primitives.add(helperTileset);
+      setSceneGlobeVisibility(false, 'google-helper-tileset-ready');
+      updateRuntimeDiagnostics({
+        tilesPath: 'Google Helper',
+        tilesDetail: 'Cesium Helper aktiv (Ion/Google-Bridge)'
+      });
+      setStatus('Google Photorealistic 3D Tiles aktiv (Cesium Helper).');
+    } catch (helperError) {
+      console.error('[WorldView][Tiles] Alle Google-Tile-Pfade fehlgeschlagen', {
+        directError,
+        helperError
+      });
+
+      ensureVisibleFreeTierGlobeFallback('Google Tiles fehlgeschlagen (Direct + Helper)');
+      // God’s Eye Original-Look – Bilawal-Video March 2026
+      // Klare Produktions-Hilfe für Vercel: exakt notwendige Env-Variable im HUD.
+      showTilesFallbackOverlay('Google Tiles nicht verfügbar. Setze in Vercel ENV exakt: VITE_GOOGLE_MAP_TILES_KEY=... (Map Tiles API Key). OSM-Fallback aktiv.');
+      updateRuntimeDiagnostics({
+        tilesPath: 'OSM Fallback',
+        tilesDetail: 'Google fehlgeschlagen (Key/Quota/Referrer). Benötigt: VITE_GOOGLE_MAP_TILES_KEY in Vercel.'
+      });
+      setStatus('Fallback aktiv: Globus sichtbar, Google Tiles nicht verfügbar.');
+      setHealth('Netzwerk: degradiert • Google Tiles Fallback aktiv');
+    }
   }
 
   flyToPreset('hormuz');
@@ -925,13 +1789,17 @@ function startRateLimitedPollers(): void {
 }
 
 bindToolbarEvents();
+bindInteractionHandlers();
 createBottomLayerBar();
 setShaderMode('none');
 setShaderIntensity(0.65);
-buildAisFallbackLayer();
 buildJammingLayerFromReplay();
 setStatus('Viewer initialisiert. Lade Google 3D Tiles…');
 setHealth(navigator.onLine ? 'Netzwerk: online' : 'Netzwerk: offline');
+renderRuntimeDiagnosticsHud();
+renderPollingIndicator();
+renderEntityInfoPanel(null);
+startAisLiveFeed();
 void loadDemoReplayFromPublicData();
 void loadReplayData();
 startRateLimitedPollers();
