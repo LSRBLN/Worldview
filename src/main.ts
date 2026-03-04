@@ -1443,6 +1443,96 @@ async function fetchLiveTleLines(): Promise<string[]> {
   return tleText.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
+const adsbFallbackSeeds = [
+  { id: 'adsb-fallback-1', callsign: 'QESHM-CTRL-01', lon: 56.28, lat: 26.46, altitude: 6200, speedKts: 280, isMilitary: true },
+  { id: 'adsb-fallback-2', callsign: 'GULF-AIR-22', lon: 56.72, lat: 26.12, altitude: 8400, speedKts: 410, isMilitary: false },
+  { id: 'adsb-fallback-3', callsign: 'ORBIT-RECON-5', lon: 55.84, lat: 25.96, altitude: 9800, speedKts: 455, isMilitary: true }
+] as const;
+
+function clearAdsbFallbackTracks(): void {
+  adsbFallbackSeeds.forEach((seed) => {
+    const existing = adsbTrackRegistry.get(seed.id);
+    if (!existing) {
+      return;
+    }
+    layerCollections.adsb.entities.remove(existing.entity);
+    adsbTrackRegistry.delete(seed.id);
+  });
+}
+
+function upsertAdsbFallbackTracks(sourceLabel: string): void {
+  const nowEpochMs = Date.now();
+
+  adsbFallbackSeeds.forEach((seed, index) => {
+    const drift = ((nowEpochMs / 1000 + index * 120) % 1600) * 0.00006;
+    const lon = seed.lon + drift;
+    const lat = seed.lat + Math.sin((nowEpochMs / 1000) * 0.002 + index) * 0.08;
+    const position = Cesium.Cartesian3.fromDegrees(lon, lat, seed.altitude);
+
+    const existing = adsbTrackRegistry.get(seed.id);
+    if (existing) {
+      existing.entity.position = new Cesium.ConstantPositionProperty(position);
+      existing.lastSeenEpochMs = nowEpochMs - (adsbTrackStaleThresholdMs + 1_000);
+      existing.altitudeM = seed.altitude;
+      existing.isMilitary = seed.isMilitary;
+      existing.entity.show = true;
+      return;
+    }
+
+    const colorFriendly = Cesium.Color.fromCssColorString('#ffd24a').withAlpha(0.95);
+    const colorHostile = Cesium.Color.fromCssColorString('#ff5a5a').withAlpha(0.96);
+    const isMilitary = seed.isMilitary;
+    const flightColor = isMilitary ? colorHostile : colorFriendly;
+    const entity = layerCollections.adsb.entities.add({
+      id: seed.id,
+      name: seed.callsign,
+      position,
+      billboard: {
+        image: isMilitary ? planeRedIconDataUri : planeBlueIconDataUri,
+        scale: 0.46,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        color: flightColor,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 4_200_000)
+      },
+      path: {
+        resolution: 120,
+        width: isMilitary ? 1.5 : 1.2,
+        leadTime: 600,
+        trailTime: 1200,
+        material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
+      },
+      label: {
+        text: `${seed.callsign} • ALT ${seed.altitude}m`,
+        font: '9pt monospace',
+        fillColor: isMilitary ? Cesium.Color.RED : Cesium.Color.fromCssColorString('#ffd24a'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(8, -8),
+        show: true,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
+      },
+      properties: {
+        callsign: seed.callsign,
+        altitude: seed.altitude,
+        speedKts: seed.speedKts,
+        gpsJamming: false,
+        status: `FALLBACK TRACK (${sourceLabel})`
+      }
+    });
+
+    adsbTrackRegistry.set(seed.id, {
+      key: seed.id,
+      entity,
+      isMilitary,
+      altitudeM: seed.altitude,
+      lastSeenEpochMs: nowEpochMs - (adsbTrackStaleThresholdMs + 1_000)
+    });
+  });
+
+  applyFlightVisibilityFilters();
+}
+
 async function pollAdsbLayer(): Promise<void> {
   try {
     if (!navigator.onLine) {
@@ -1510,6 +1600,10 @@ async function pollAdsbLayer(): Promise<void> {
     const nowEpochMs = Date.now();
     let sampleIcao24 = '';
     let sampleTrackLastContactSec = 0;
+
+    if (states.length > 0) {
+      clearAdsbFallbackTracks();
+    }
 
     for (let i = 0; i < Math.min(states.length, maxFlights); i += 1) {
       const state = states[i];
@@ -1642,6 +1736,10 @@ async function pollAdsbLayer(): Promise<void> {
       }
     });
 
+    if (states.length === 0) {
+      upsertAdsbFallbackTracks(activeFeedLabel);
+    }
+
     applyFlightVisibilityFilters();
     if (sampleIcao24) {
       void refreshOpenSkyIntelSnapshot(sampleIcao24, sampleTrackLastContactSec);
@@ -1672,8 +1770,7 @@ async function pollAdsbLayer(): Promise<void> {
     console.warn('ADS-B Polling fehlgeschlagen', error);
     // God’s Eye Original-Look – Bilawal-Video March 2026
     // Produktions-Hardening: Bei API/CORS/Rate-Limit Fehlern bleibt mindestens Replay/CZML-Flugverkehr sichtbar.
-    layerCollections.adsb.entities.removeAll();
-    adsbTrackRegistry.clear();
+    upsertAdsbFallbackTracks('Offline fallback');
     setDataSourceVisibility(replaySources.adsb, true);
     updateRuntimeDiagnostics({
       flightsFeed: 'Replay/CZML fallback',
