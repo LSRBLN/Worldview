@@ -3,7 +3,13 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 // Kostenfrei weil Free-Tier / GitHub Student Pack
 // Cesium benötigt statische Assets (Workers, ThirdParty, Assets, Widgets).
+const repositoryName = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? '';
+const pagesBase = process.env.GITHUB_ACTIONS === 'true' && repositoryName ? `/${repositoryName}/` : '/';
+
 export default defineConfig({
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  // Für GitHub Pages muss der Base-Pfad auf /<repo>/ gesetzt werden.
+  base: pagesBase,
   plugins: [
     viteStaticCopy({
       targets: [
