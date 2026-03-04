@@ -100,7 +100,7 @@ body,
 
 .header {
   position: fixed;
-  top: 10px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1200;
@@ -190,12 +190,12 @@ body,
 }
 
 .logo {
-  min-width: 440px;
-  padding: 10px 22px 12px;
+  min-width: 560px;
+  padding: 10px 20px;
   border: 1px solid var(--hud-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.9) 100%);
-  box-shadow: var(--hud-shadow);
+  background: rgba(2, 10, 8, 0.86);
+  box-shadow: 0 0 12px rgba(0, 255, 157, 0.24);
   backdrop-filter: blur(5px);
 }
 
@@ -213,7 +213,7 @@ body,
 .logo h1 {
   margin: 4px 0 2px;
   font-family: 'Black Ops One', 'Orbitron', 'Courier New', monospace;
-  font-size: 46px;
+  font-size: 42px;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -253,23 +253,23 @@ body,
 
 #toolbar {
   position: fixed;
-  top: 110px;
+  top: 96px;
   left: 14px;
   z-index: 1150;
-  width: 340px;
-  max-height: calc(100vh - 170px);
+  width: 332px;
+  max-height: calc(100vh - 196px);
   overflow: auto;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--hud-border);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.66) 0%, rgba(0, 0, 0, 0.82) 100%);
-  box-shadow: var(--hud-shadow);
+  border-radius: 8px;
+  background: rgba(3, 10, 9, 0.78);
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
   backdrop-filter: blur(6px);
 }
 
 .toolbar-section {
-  margin-top: 12px;
-  padding-top: 11px;
+  margin-top: 10px;
+  padding-top: 9px;
   border-top: 1px solid rgba(0, 255, 157, 0.25);
 }
 
@@ -420,15 +420,25 @@ button:hover {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 62px;
+  bottom: 58px;
   z-index: 1200;
   display: flex;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid rgba(0, 255, 157, 0.7);
-  border-radius: 12px;
-  background: var(--hud-panel-strong);
-  box-shadow: var(--hud-shadow);
+  border-radius: 10px;
+  background: rgba(0, 8, 8, 0.88);
+  box-shadow: 0 0 12px rgba(0, 255, 157, 0.24);
+}
+
+.right-rail {
+  position: fixed;
+  top: 96px;
+  right: 14px;
+  z-index: 1250;
+  width: 336px;
+  display: grid;
+  gap: 8px;
 }
 
 .layer-bar button[data-bottom-layer] {
@@ -461,31 +471,28 @@ button:hover {
 }
 
 .polling-indicator,
-.runtime-diagnostics-hud,
+.incident-feed-panel,
+.military-info-panel,
 .entity-info-panel,
 .tiles-fallback-banner {
-  right: 12px;
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
   border: 1px solid var(--hud-border);
-  border-radius: 9px;
-  background: var(--hud-panel);
-  box-shadow: var(--hud-shadow);
+  border-radius: 8px;
+  background: rgba(0, 10, 9, 0.8);
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
 }
 
 .polling-indicator {
-  position: fixed;
-  top: 110px;
-  z-index: 1250;
   padding: 8px 10px;
   font-size: 11px;
   color: #c6ffe4;
 }
 
 .military-info-panel {
-  position: fixed;
-  right: 12px;
-  top: 330px;
-  z-index: 1250;
-  width: min(340px, calc(100vw - 24px));
+  width: 100%;
   padding: 10px 12px;
   border: 1px solid rgba(255, 78, 94, 0.72);
   border-radius: 9px;
@@ -510,20 +517,17 @@ button:hover {
 
 .runtime-diagnostics-hud {
   position: fixed;
-  top: 170px;
+  right: 14px;
+  top: calc(96px + 8px + 36px + 8px);
   z-index: 1240;
-  width: min(430px, calc(100vw - 24px));
+  width: 336px;
   padding: 10px 12px;
   color: #c8ffe5;
   font-size: 12px;
 }
 
 .incident-feed-panel {
-  position: fixed;
-  right: 12px;
-  top: 170px;
   z-index: 1251;
-  width: min(340px, calc(100vw - 24px));
   padding: 10px 12px;
   border: 1px solid rgba(0, 255, 157, 0.72);
   border-radius: 9px;
@@ -572,10 +576,8 @@ button:hover {
 }
 
 .entity-info-panel {
-  position: fixed;
-  top: 382px;
   z-index: 1240;
-  width: min(304px, calc(100vw - 24px));
+  width: 100%;
   padding: 10px 12px;
   color: #c8ffe5;
 }
@@ -634,9 +636,10 @@ button:hover {
 
 .tiles-fallback-banner {
   position: fixed;
-  top: 110px;
+  top: 96px;
+  right: 360px;
   z-index: 1300;
-  max-width: min(430px, calc(100vw - 24px));
+  max-width: min(380px, calc(100vw - 380px));
   padding: 9px 11px;
   border-color: rgba(255, 85, 85, 0.8);
   color: #ffdada;
@@ -778,6 +781,15 @@ button:hover {
     max-height: 40vh;
   }
 
+  .right-rail {
+    width: calc(100vw - 24px);
+    right: 12px;
+    top: auto;
+    bottom: 144px;
+    max-height: 36vh;
+    overflow: auto;
+  }
+
   .layer-bar {
     width: calc(100vw - 24px);
     left: 12px;
@@ -788,8 +800,14 @@ button:hover {
   .polling-indicator,
   .military-info-panel,
   .runtime-diagnostics-hud,
-  .entity-info-panel {
+  .entity-info-panel,
+  .incident-feed-panel {
     width: calc(100vw - 24px);
+  }
+
+  .runtime-diagnostics-hud {
+    right: 12px;
+    top: 96px;
   }
 
   .top-mode-switch {

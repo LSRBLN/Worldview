@@ -122,28 +122,30 @@
         </section>
       </aside>
 
-      <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling • Flights: standby • SAT: standby • AIS: standby • --:--:--</div>
-      <aside id="incidentFeedPanel" class="incident-feed-panel" aria-live="polite">
-        <h2>Incident Feed</h2>
-        <div id="incidentFeedList" class="incident-feed-list">
-          <p>INIT // Tactical feed online…</p>
-        </div>
-      </aside>
-      <aside id="militaryInfoPanel" class="military-info-panel" aria-live="polite">
-        <h2>Military Tracks</h2>
-        <p>Keine militärischen Tracks aktiv.</p>
+      <aside id="rightRail" class="right-rail" aria-label="Intel rail">
+        <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling • Flights: standby • SAT: standby • AIS: standby • --:--:--</div>
+        <aside id="incidentFeedPanel" class="incident-feed-panel" aria-live="polite">
+          <h2>Incident Feed</h2>
+          <div id="incidentFeedList" class="incident-feed-list">
+            <p>INIT // Tactical feed online…</p>
+          </div>
+        </aside>
+        <aside id="militaryInfoPanel" class="military-info-panel" aria-live="polite">
+          <h2>Military Tracks</h2>
+          <p>Keine militärischen Tracks aktiv.</p>
+        </aside>
+        <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
+          <h2>Entity Intel // Tactical Readout</h2>
+          <div class="entity-intel-grid">
+            <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
+            <p><strong>Typ:</strong> <span data-field="type">—</span></p>
+            <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
+            <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
+          </div>
+          <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
+        </aside>
       </aside>
       <div id="hoverInfo" class="hover-info" aria-hidden="true"></div>
-      <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
-        <h2>Entity Intel // Tactical Readout</h2>
-        <div class="entity-intel-grid">
-          <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
-          <p><strong>Typ:</strong> <span data-field="type">—</span></p>
-          <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
-          <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
-        </div>
-        <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
-      </aside>
 
       <div id="cesiumContainer"></div>
     </div>
