@@ -130,6 +130,14 @@ function renderIncidentFeed(): void {
 }
 
 function pushIncident(text: string, severity: IncidentSeverity = 'INFO'): void {
+  const nowEpochMs = Date.now();
+  const signature = `${severity}:${text}`;
+  if (signature === lastIncidentSignature && nowEpochMs - lastIncidentEpochMs < 18_000) {
+    return;
+  }
+
+  lastIncidentSignature = signature;
+  lastIncidentEpochMs = nowEpochMs;
   const time = new Date().toISOString().slice(11, 19);
   incidentFeed.unshift({ time, severity, text });
   if (incidentFeed.length > 12) {
@@ -216,9 +224,6 @@ function initHudTelemetryTicker(): void {
       clearanceText.textContent = 'CLEARANCE: TS/SCI';
     }
 
-    if (now.getUTCSeconds() % 25 === 0) {
-      pushIncident('Sensor sweep synchronized across active layers', 'INFO');
-    }
   };
 
   update();
@@ -269,6 +274,7 @@ type AdsbTrackMeta = {
   isMilitary: boolean;
   altitudeM: number;
   lastSeenEpochMs: number;
+  positionTrack?: Cesium.SampledPositionProperty;
 };
 
 const flightVisibilityState: FlightVisibilityState = {
@@ -281,6 +287,8 @@ const adsbTrackRegistry = new Map<string, AdsbTrackMeta>();
 const manuallyHiddenEntityIds = new Set<string>();
 const adsbTrackStaleThresholdMs = 120_000;
 let lastOpenSkyIntelUpdateEpochMs = 0;
+let lastIncidentSignature = '';
+let lastIncidentEpochMs = 0;
 
 function isAdsbMilitaryTrack(callsign: string): boolean {
   return /MIL|ARMY|NAVY|AIR|RCH|RRR|QID|UAE|IRIAF|F\d{1,2}|USAF|RAF|IAF/i.test(callsign);
@@ -1499,8 +1507,8 @@ const adsbFallbackSeeds = Array.from({ length: 18 }, (_, index) => {
   return {
     id: `adsb-fallback-${index + 1}`,
     callsign: military ? `RECON-${200 + index}` : `GULF-${400 + index}`,
-    lon: 55.6 + ring * 0.19,
-    lat: 25.5 + (index % 6) * 0.22,
+    lon: 52.8 + ring * 0.85,
+    lat: 23.4 + (index % 6) * 0.95,
     altitude: 4200 + (index % 8) * 900,
     speedKts: 240 + (index % 7) * 35,
     isMilitary: military
@@ -1522,14 +1530,8 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
   const nowEpochMs = Date.now();
 
   adsbFallbackSeeds.forEach((seed, index) => {
-    const drift = ((nowEpochMs / 1000 + index * 120) % 1600) * 0.00006;
-    const lon = seed.lon + drift;
-    const lat = seed.lat + Math.sin((nowEpochMs / 1000) * 0.002 + index) * 0.08;
-    const position = Cesium.Cartesian3.fromDegrees(lon, lat, seed.altitude);
-
     const existing = adsbTrackRegistry.get(seed.id);
     if (existing) {
-      existing.entity.position = new Cesium.ConstantPositionProperty(position);
       existing.lastSeenEpochMs = nowEpochMs - (adsbTrackStaleThresholdMs + 1_000);
       existing.altitudeM = seed.altitude;
       existing.isMilitary = seed.isMilitary;
@@ -1541,10 +1543,18 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
     const colorHostile = Cesium.Color.fromCssColorString('#ff5a5a').withAlpha(0.96);
     const isMilitary = seed.isMilitary;
     const flightColor = isMilitary ? colorHostile : colorFriendly;
+    const fallbackPosition = new Cesium.CallbackPositionProperty((time?: Cesium.JulianDate) => {
+      const current = time ?? viewer.clock.currentTime;
+      const elapsed = Cesium.JulianDate.secondsDifference(current, viewer.clock.startTime);
+      const drift = ((elapsed + index * 260) % 2800) * 0.00008;
+      const lateral = Math.sin(elapsed * 0.0034 + index * 0.7) * 0.24;
+      return Cesium.Cartesian3.fromDegrees(seed.lon + drift, seed.lat + lateral, seed.altitude);
+    }, false);
+
     const entity = layerCollections.adsb.entities.add({
       id: seed.id,
       name: seed.callsign,
-      position,
+      position: fallbackPosition,
       billboard: {
         image: isMilitary ? planeRedIconDataUri : planeBlueIconDataUri,
         scale: 0.46,
@@ -1567,7 +1577,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
         outlineWidth: 2,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         pixelOffset: new Cesium.Cartesian2(8, -8),
-        show: true,
+        show: isMilitary,
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1_500_000)
       },
       properties: {
@@ -1584,7 +1594,8 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
       entity,
       isMilitary,
       altitudeM: seed.altitude,
-      lastSeenEpochMs: nowEpochMs - (adsbTrackStaleThresholdMs + 1_000)
+      lastSeenEpochMs: nowEpochMs - (adsbTrackStaleThresholdMs + 1_000),
+      positionTrack: undefined
     });
   });
 
@@ -1675,6 +1686,7 @@ async function pollAdsbLayer(): Promise<void> {
       const altitude = Number(state[7] ?? 0);
       const velocityMs = Number(state[9] ?? NaN);
       const speedKts = Number.isFinite(velocityMs) ? velocityMs * 1.94384 : NaN;
+      const headingDeg = Number(state[10] ?? NaN);
       const lastContactSec = Number(state[4] ?? 0);
       const isStale = Number.isFinite(lastContactSec)
         ? nowEpochMs - (lastContactSec * 1000) > adsbTrackStaleThresholdMs
@@ -1691,9 +1703,29 @@ async function pollAdsbLayer(): Promise<void> {
       const flightColor = isMilitary ? colorHostile : colorFriendly;
 
       const position = Cesium.Cartesian3.fromDegrees(lon, lat, altitude);
+      const sampleTime = Cesium.JulianDate.fromDate(new Date(nowEpochMs));
+      const predictionSeconds = 10;
+      let predictedLon = lon;
+      let predictedLat = lat;
+      if (Number.isFinite(velocityMs) && Number.isFinite(headingDeg)) {
+        const headingRad = Cesium.Math.toRadians(headingDeg);
+        const distanceM = velocityMs * predictionSeconds;
+        const latRad = Cesium.Math.toRadians(lat);
+        const metersPerDegLat = 111320;
+        const metersPerDegLon = Math.max(1, 111320 * Math.cos(latRad));
+        predictedLat = lat + (Math.cos(headingRad) * distanceM) / metersPerDegLat;
+        predictedLon = lon + (Math.sin(headingRad) * distanceM) / metersPerDegLon;
+      }
+      const predictedPosition = Cesium.Cartesian3.fromDegrees(predictedLon, predictedLat, altitude);
+      const predictedSampleTime = Cesium.JulianDate.addSeconds(sampleTime, predictionSeconds, new Cesium.JulianDate());
       const existingTrack = adsbTrackRegistry.get(trackKey);
       if (existingTrack) {
-        existingTrack.entity.position = new Cesium.ConstantPositionProperty(position);
+        if (existingTrack.positionTrack) {
+          existingTrack.positionTrack.addSample(sampleTime, position);
+          existingTrack.positionTrack.addSample(predictedSampleTime, predictedPosition);
+        } else {
+          existingTrack.entity.position = new Cesium.ConstantPositionProperty(position);
+        }
         if (existingTrack.entity.label) {
           existingTrack.entity.label.text = new Cesium.ConstantProperty(`${callsign} • ALT ${Math.max(0, altitude).toFixed(0)}m`);
         }
@@ -1715,7 +1747,16 @@ async function pollAdsbLayer(): Promise<void> {
         const newEntity = layerCollections.adsb.entities.add({
           id: trackKey,
           name: callsign,
-          position,
+          position: (() => {
+            const sampled = new Cesium.SampledPositionProperty();
+            sampled.setInterpolationOptions({
+              interpolationAlgorithm: Cesium.LinearApproximation,
+              interpolationDegree: 1
+            });
+            sampled.addSample(sampleTime, position);
+            sampled.addSample(predictedSampleTime, predictedPosition);
+            return sampled;
+          })(),
           billboard: {
             // God’s Eye Original-Look – Bilawal-Video March 2026
             image: isBlue ? planeBlueIconDataUri : planeRedIconDataUri,
@@ -1760,7 +1801,8 @@ async function pollAdsbLayer(): Promise<void> {
           altitudeM: Math.max(0, altitude),
           lastSeenEpochMs: Number.isFinite(lastContactSec) && lastContactSec > 0
             ? lastContactSec * 1000
-            : nowEpochMs
+            : nowEpochMs,
+          positionTrack: newEntity.position as Cesium.SampledPositionProperty
         });
       }
 

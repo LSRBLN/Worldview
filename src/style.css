@@ -546,7 +546,7 @@ button:hover {
 .incident-feed-list {
   display: grid;
   gap: 4px;
-  max-height: 140px;
+  max-height: 92px;
   overflow: auto;
 }
 
@@ -580,6 +580,11 @@ button:hover {
   width: 100%;
   padding: 10px 12px;
   color: #c8ffe5;
+}
+
+#toolbar .toolbar-section[aria-label='replay export'],
+#toolbar .toolbar-section[aria-label='attribution'] {
+  display: none;
 }
 
 .entity-info-panel h2 {
