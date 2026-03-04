@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&family=VT323&display=swap');
+
 html,
 body,
 #app {
@@ -8,56 +10,25 @@ body,
   overflow: hidden;
   /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   background: radial-gradient(circle at 50% 10%, #070f0a 0%, #020604 45%, #000 100%);
-  color: #b8ffd9;
-  font-family: 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
+  color: var(--accent-green-soft);
+  font-family: 'VT323', 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
 }
 
 body,
 #cesiumContainer {
   /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   background: #000;
-  font-family: 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
-  color: #b8ffd9;
+  font-family: 'VT323', 'Share Tech Mono', 'JetBrains Mono', 'Courier New', monospace;
+  color: var(--accent-green-soft);
   overflow: hidden;
-}
-
-:root {
-  --accent-green: #4db8ff;
-  --accent-green-soft: #9bd7ff;
-  --classified-red: #ff3344;
-  --hud-bg: rgba(8, 18, 38, 0.5);
-  --hud-border: rgba(82, 156, 255, 0.6);
-  --hud-glow: 0 0 8px rgba(77, 184, 255, 0.72), 0 0 18px rgba(77, 184, 255, 0.34);
-  --hud-text-shadow: 0 0 7px rgba(77, 184, 255, 0.72), 0 0 14px rgba(77, 184, 255, 0.22);
-  --scanline-opacity: 0.14;
-  --scanline-speed: 7s;
-  --phosphor-strength: 0.1;
-}
-
-.mode-eo {
-  --accent-green: #4db8ff;
-  --accent-green-soft: #9bd7ff;
-}
-
-.mode-nvg {
-  --accent-green: #80d6ff;
-  --accent-green-soft: #c1ecff;
-  --phosphor-strength: 0.16;
-}
-
-.mode-flir {
-  --accent-green: #50c9ff;
-  --accent-green-soft: #a4e9ff;
-  --scanline-opacity: 0.12;
-  --phosphor-strength: 0.08;
 }
 
 .viewer {
   /* // God’s Eye Original-Look – Bilawal-Video March 2026 */
   position: relative;
   box-shadow:
-    inset 0 0 140px rgba(77, 184, 255, 0.1),
-    0 0 40px rgba(77, 184, 255, 0.2);
+    inset 0 0 140px rgba(0, 255, 65, 0.09),
+    0 0 40px rgba(0, 255, 65, 0.2);
 }
 
 .crt-overlay,
@@ -76,15 +47,15 @@ body,
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(121, 190, 255, 0.13) 0px,
-      rgba(121, 190, 255, 0.13) 1px,
+      rgba(110, 255, 165, 0.13) 0px,
+      rgba(110, 255, 165, 0.13) 1px,
       rgba(0, 0, 0, 0) 2px,
       rgba(0, 0, 0, 0) 4px
     ),
     repeating-linear-gradient(
       to right,
-      rgba(121, 190, 255, 0.03) 0px,
-      rgba(121, 190, 255, 0.03) 1px,
+      rgba(100, 255, 155, 0.03) 0px,
+      rgba(100, 255, 155, 0.03) 1px,
       rgba(0, 0, 0, 0) 3px,
       rgba(0, 0, 0, 0) 6px
     );
@@ -93,7 +64,7 @@ body,
 
 .phosphor-overlay {
   z-index: 1011;
-  background: radial-gradient(circle at 50% 50%, rgba(77, 184, 255, var(--phosphor-strength)) 0%, rgba(77, 184, 255, 0) 72%);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 65, var(--phosphor-strength)) 0%, rgba(0, 255, 65, 0) 72%);
   mix-blend-mode: color-dodge;
   animation: phosphor-breathe 4s ease-in-out infinite;
 }
@@ -106,8 +77,8 @@ body,
 .reticle-grid {
   z-index: 1013;
   background-image:
-    linear-gradient(to right, rgba(77, 184, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(77, 184, 255, 0.06) 1px, transparent 1px);
+    linear-gradient(to right, var(--reticle-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--reticle-color) 1px, transparent 1px);
   background-size: 82px 82px;
   mask-image: radial-gradient(circle at center, black 35%, transparent 90%);
   opacity: 0.35;
@@ -129,13 +100,14 @@ body,
   border: 1px solid var(--hud-border);
   background: var(--hud-bg);
   box-shadow:
-    inset 0 0 22px rgba(77, 184, 255, 0.14),
-    0 0 26px rgba(77, 184, 255, 0.2);
+    inset 0 0 22px rgba(0, 255, 65, 0.12),
+    0 0 26px rgba(0, 255, 65, 0.18);
   backdrop-filter: blur(6px) saturate(120%);
 }
 
 .top-secret {
   display: block;
+  font-family: 'VT323', 'Share Tech Mono', monospace;
   color: var(--classified-red);
   font-size: 11px;
   letter-spacing: 0.13em;
@@ -166,6 +138,7 @@ body,
 
 .logo h1 {
   margin: 3px 0 2px;
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
   font-size: 26px;
   letter-spacing: 0.17em;
   text-transform: uppercase;
@@ -175,6 +148,7 @@ body,
 
 .gods-eye {
   display: block;
+  font-family: 'Share Tech Mono', 'VT323', monospace;
   color: #d2ffea;
   font-size: 12px;
   letter-spacing: 0.11em;
@@ -194,7 +168,7 @@ body,
 
 .header-meta span {
   padding: 2px 7px;
-  border: 1px solid rgba(77, 184, 255, 0.35);
+  border: 1px solid rgba(0, 255, 65, 0.28);
   background: rgba(0, 14, 8, 0.4);
 }
 
@@ -211,8 +185,8 @@ body,
   background: var(--hud-bg);
   overflow: auto;
   box-shadow:
-    inset 0 0 25px rgba(77, 184, 255, 0.1),
-    0 0 20px rgba(77, 184, 255, 0.18);
+    inset 0 0 25px rgba(0, 255, 65, 0.08),
+    0 0 20px rgba(0, 255, 65, 0.16);
   backdrop-filter: blur(7px) saturate(120%);
 }
 
@@ -257,8 +231,8 @@ button,
 }
 
 button:hover {
-  background: rgba(77, 184, 255, 0.16);
-  box-shadow: inset 0 0 16px rgba(77, 184, 255, 0.2);
+  background: rgba(0, 255, 65, 0.14);
+  box-shadow: inset 0 0 16px rgba(0, 255, 65, 0.2);
   transform: translateY(-1px);
   cursor: pointer;
 }
@@ -293,7 +267,23 @@ button:hover {
 
 #shaderIntensity {
   width: 100%;
-  filter: drop-shadow(0 0 4px rgba(77, 184, 255, 0.5));
+  filter: drop-shadow(0 0 4px rgba(0, 255, 65, 0.45));
+}
+
+.api-status-strip {
+  margin-top: 7px;
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #cbffec;
+}
+
+.api-status-strip span {
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 255, 65, 0.24);
+  background: rgba(0, 14, 8, 0.38);
+  box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.1);
 }
 
 #statusText,

@@ -29,6 +29,10 @@ const hoverInfo = document.getElementById('hoverInfo') as HTMLDivElement | null;
 const entityInfoPanel = document.getElementById('entityInfoPanel') as HTMLDivElement | null;
 const pollingIndicator = document.getElementById('pollingIndicator') as HTMLDivElement | null;
 const appRoot = document.getElementById('app');
+const activeVisionMode = document.getElementById('activeVisionMode');
+const apiTilesText = document.getElementById('apiTilesText');
+const apiFlightsText = document.getElementById('apiFlightsText');
+const apiAisText = document.getElementById('apiAisText');
 
 type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
 type FlightsFeedStatus = 'Initialisiere…' | 'OpenSky ok' | 'Fallback aktiv' | 'Demo/CZML Fallback' | 'Fehler';
@@ -96,6 +100,17 @@ function renderRuntimeDiagnosticsHud(): void {
 function updateRuntimeDiagnostics(partial: Partial<RuntimeDiagnosticsState>): void {
   Object.assign(runtimeDiagnostics, partial);
   renderRuntimeDiagnosticsHud();
+
+  if (apiTilesText) {
+    apiTilesText.textContent = `Tiles: ${runtimeDiagnostics.tilesPath}`;
+  }
+  if (apiFlightsText) {
+    apiFlightsText.textContent = `Flights: ${runtimeDiagnostics.flightsFeed}`;
+  }
+  if (apiAisText) {
+    apiAisText.textContent = `AIS: ${runtimeDiagnostics.aisFeed}`;
+  }
+
   console.info('[WorldView][RuntimeDiagnostics]', runtimeDiagnostics);
 }
 
@@ -192,13 +207,22 @@ function setHudModeClass(mode: ShaderMode): void {
   appRoot.classList.remove('mode-eo', 'mode-nvg', 'mode-flir');
   if (mode === 'nvg') {
     appRoot.classList.add('mode-nvg');
+    if (activeVisionMode) {
+      activeVisionMode.textContent = 'VISION: NVG';
+    }
     return;
   }
   if (mode === 'flir') {
     appRoot.classList.add('mode-flir');
+    if (activeVisionMode) {
+      activeVisionMode.textContent = 'VISION: FLIR';
+    }
     return;
   }
   appRoot.classList.add('mode-eo');
+  if (activeVisionMode) {
+    activeVisionMode.textContent = mode === 'crt' ? 'VISION: EO-CRT' : 'VISION: EO';
+  }
 }
 
 type CameraPresetKey = 'hormuz' | 'iran' | 'tehran' | 'natanz';

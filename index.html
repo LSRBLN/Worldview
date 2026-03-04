@@ -22,6 +22,7 @@
             <span>THEATER: MENA</span>
             <span>MODE: STRATEGIC ISR</span>
             <span>CLEARANCE: TS/SCI</span>
+            <span id="activeVisionMode">VISION: EO</span>
           </div>
         </div>
       </div>
@@ -69,6 +70,11 @@
           <h2>Status</h2>
           <p id="statusText">Initialisiere Cesium Viewer…</p>
           <p id="healthText">Netzwerk: online</p>
+          <div class="api-status-strip" aria-live="polite">
+            <span id="apiTilesText">Tiles: init</span>
+            <span id="apiFlightsText">Flights: init</span>
+            <span id="apiAisText">AIS: init</span>
+          </div>
         </section>
 
         <section class="toolbar-section" aria-label="Attribution">
