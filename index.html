@@ -16,7 +16,7 @@
         <div class="logo">
           <span class="top-secret" data-label="TOP SECRET // SI-TK // NOFORN // ORCON">TOP SECRET // SI-TK // NOFORN // ORCON</span>
           <h1>STRATONOVA</h1>
-          <span class="gods-eye">COMMAND CENTER</span>
+          <span class="gods-eye">GOD'S EYE 4D COMMAND CENTER</span>
           <div class="header-meta" aria-hidden="true">
             <span>THEATER: MENA</span>
             <span id="recClockText">REC: --:--:--Z</span>
@@ -87,8 +87,14 @@
       <div id="pollingIndicator" class="polling-indicator" aria-live="polite">Polling • Flights: standby • SAT: standby • AIS: standby • --:--:--</div>
       <div id="hoverInfo" class="hover-info" aria-hidden="true"></div>
       <aside id="entityInfoPanel" class="entity-info-panel" aria-live="polite">
-        <h2>Entity Intel</h2>
-        <p>Select any object on the map to inspect telemetry.</p>
+        <h2>Entity Intel // Tactical Readout</h2>
+        <div class="entity-intel-grid">
+          <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
+          <p><strong>Typ:</strong> <span data-field="type">—</span></p>
+          <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
+          <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
+        </div>
+        <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
       </aside>
 
       <div id="cesiumContainer"></div>

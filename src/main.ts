@@ -327,25 +327,103 @@ function extractEntityMeta(entity: Cesium.Entity): { callsign: string; altitudeM
   return { callsign, altitudeM, status, layer };
 }
 
+function formatEntityCoordinates(entity: Cesium.Entity): string {
+  const cartographic = readEntityPosition(entity);
+  if (!cartographic) {
+    return '—';
+  }
+
+  const lat = Cesium.Math.toDegrees(cartographic.latitude);
+  const lon = Cesium.Math.toDegrees(cartographic.longitude);
+  return `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+}
+
+function classifyEntityType(entity: Cesium.Entity): string {
+  if (entity.billboard) {
+    return 'Air / Surface Track';
+  }
+  if (entity.point && entity.path) {
+    return 'Satellite';
+  }
+  if (entity.polygon) {
+    return 'Zone';
+  }
+  if (entity.model) {
+    return 'Aircraft Model';
+  }
+  return 'Unknown';
+}
+
 function renderEntityInfoPanel(entity: Cesium.Entity | null): void {
   if (!entityInfoPanel) {
     return;
   }
 
   if (!entity) {
-    entityInfoPanel.innerHTML = '<h2>Entity Intel</h2><p>Select any object on the map to inspect telemetry.</p>';
+    entityInfoPanel.innerHTML = `
+      <h2>Entity Intel // Tactical Readout</h2>
+      <div class="entity-intel-grid">
+        <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
+        <p><strong>Typ:</strong> <span data-field="type">—</span></p>
+        <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
+        <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
+      </div>
+      <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
+    `;
+    bindHideEntityAction();
     return;
   }
 
   const meta = extractEntityMeta(entity);
+  const coords = formatEntityCoordinates(entity);
+  const entityType = classifyEntityType(entity);
+  const entityId = safeText(entity.id);
   entityInfoPanel.innerHTML = `
-    <h2>Entity Intel</h2>
-    <p><strong>ID:</strong> ${safeText(entity.id)}</p>
-    <p><strong>Callsign:</strong> ${meta.callsign}</p>
-    <p><strong>Layer:</strong> ${meta.layer}</p>
-    <p><strong>Altitude:</strong> ${meta.altitudeM}</p>
-    <p><strong>Status:</strong> ${meta.status}</p>
+    <h2>Entity Intel // Tactical Readout</h2>
+    <div class="entity-intel-grid">
+      <p><strong>Callsign:</strong> <span data-field="callsign">${meta.callsign}</span></p>
+      <p><strong>Typ:</strong> <span data-field="type">${entityType} (${meta.layer})</span></p>
+      <p><strong>Koordinaten:</strong> <span data-field="coords">${coords}</span></p>
+      <p><strong>Status:</strong> <span data-field="status">${meta.status} • ALT ${meta.altitudeM}</span></p>
+    </div>
+    <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="${entityId}">Ausblenden</button>
   `;
+  bindHideEntityAction();
+}
+
+function bindHideEntityAction(): void {
+  const localHideButton = document.getElementById('hideEntityButton') as HTMLButtonElement | null;
+  if (!localHideButton) {
+    return;
+  }
+
+  localHideButton.addEventListener('click', () => {
+    const entityId = localHideButton.dataset.entityId;
+    if (!entityId) {
+      renderEntityInfoPanel(null);
+      return;
+    }
+
+    const target = viewer.entities.getById(entityId)
+      ?? layerCollections.adsb.entities.getById(entityId)
+      ?? layerCollections.satellites.entities.getById(entityId)
+      ?? layerCollections.ais.entities.getById(entityId)
+      ?? layerCollections.jamming.entities.getById(entityId)
+      ?? layerCollections.noFlyZones.entities.getById(entityId)
+      ?? replaySources.adsb.entities.getById(entityId)
+      ?? replaySources.satellites.entities.getById(entityId);
+
+    if (!target) {
+      renderEntityInfoPanel(null);
+      return;
+    }
+
+    target.show = false;
+    viewer.selectedEntity = undefined;
+    renderEntityInfoPanel(null);
+    setStatus(`Entity hidden: ${safeText(target.name ?? target.id)}`);
+    viewer.scene.requestRender();
+  });
 }
 
 function updateHoverInfo(x: number, y: number): void {
@@ -1283,10 +1361,10 @@ function scheduleAisReconnect(reason: string): void {
 
   if (!aisWebSocketApiKey) {
     updateRuntimeDiagnostics({
-      aisFeed: 'Fehler',
-      aisDetail: 'AISStream API-Key fehlt (VITE_AISSTREAM_API_KEY oder VITE_AIS_WS_API_KEY)'
+      aisFeed: 'AIS fallback',
+      aisDetail: 'AISStream API key missing • local simulation remains active'
     });
-    markPollStatus('ais', 'error');
+    markPollStatus('ais', 'fallback');
     return;
   }
 
@@ -1475,7 +1553,7 @@ function switchToAisFallback(reason: string): void {
   liveAisTracks.clear();
   buildAisFallbackLayer();
   updateRuntimeDiagnostics({
-    aisFeed: 'AIS Fallback',
+    aisFeed: 'AIS fallback',
     aisDetail: reason
   });
   setStatus('AIS fallback mode active (local simulation).');
@@ -1495,11 +1573,6 @@ function startAisLiveFeed(): void {
 
   if (!aisWebSocketApiKey) {
     switchToAisFallback('AISStream API-Key fehlt • lokale AIS-Simulation aktiv');
-    updateRuntimeDiagnostics({
-      aisFeed: 'Error',
-      aisDetail: 'Setze VITE_AISSTREAM_API_KEY (Fallback: VITE_AIS_WS_API_KEY)'
-    });
-    markPollStatus('ais', 'error');
     return;
   }
 
@@ -1818,9 +1891,8 @@ viewer.selectedEntityChanged.addEventListener((entity) => {
     return;
   }
 
-  entity.show = false;
+  renderEntityInfoPanel(entity);
   viewer.selectedEntity = undefined;
-  setStatus(`Entity hidden: ${safeText(entity.name ?? entity.id)}`);
   viewer.scene.requestRender();
 });
 
@@ -2038,7 +2110,9 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
 
     try {
       // Kostenfrei weil Free-Tier / GitHub Student Pack
-      const helperTileset = await Cesium.createGooglePhotorealistic3DTileset();
+      const helperTileset = await Cesium.createGooglePhotorealistic3DTileset({
+        onlyUsingWithGoogleGeocoder: true
+      });
       viewer.scene.primitives.add(helperTileset);
       setSceneGlobeVisibility(false, 'google-helper-tileset-ready');
       updateRuntimeDiagnostics({
