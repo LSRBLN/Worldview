@@ -1,0 +1,14 @@
+[Unit]
+Description=Run WorldView CZML Generator every 10 minutes
+
+[Timer]
+# Kostenfrei weil Free-Tier / GitHub Student Pack
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Persistent=true
+Unit=worldview-czml.service
+
+[Install]
+WantedBy=timers.target
+

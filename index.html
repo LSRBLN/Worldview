@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorldView – Schritt 2</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="toolbar" aria-label="WorldView Steuerung">
+        <div class="toolbar-header">
+          <h1>WorldView</h1>
+          <p>God's Eye • Schritt 2</p>
+        </div>
+
+        <section class="toolbar-section" aria-label="Kamera Presets">
+          <h2>Kamera</h2>
+          <div class="button-row">
+            <button type="button" data-camera="hormuz">Straße von Hormuz</button>
+            <button type="button" data-camera="iran">Iran Overview</button>
+            <button type="button" data-camera="tehran">Teheran</button>
+            <button type="button" data-camera="natanz">Natanz</button>
+          </div>
+        </section>
+
+        <section class="toolbar-section" aria-label="Layer Toggler">
+          <h2>Layer</h2>
+          <label><input type="checkbox" data-layer="satellites" checked /> Satelliten</label>
+          <label><input type="checkbox" data-layer="adsb" checked /> ADS-B</label>
+          <label><input type="checkbox" data-layer="ais" checked /> AIS</label>
+          <label><input type="checkbox" data-layer="jamming" checked /> GPS Jamming</label>
+          <label><input type="checkbox" data-layer="shaders" checked /> Shader Output</label>
+        </section>
+
+        <section class="toolbar-section" aria-label="Shader Steuerung">
+          <h2>Shader Modus</h2>
+          <div class="shader-mode-grid">
+            <label><input type="radio" name="shaderMode" value="none" checked /> Aus</label>
+            <label><input type="radio" name="shaderMode" value="crt" /> CRT</label>
+            <label><input type="radio" name="shaderMode" value="nvg" /> NVG</label>
+            <label><input type="radio" name="shaderMode" value="flir" /> FLIR</label>
+          </div>
+          <label class="range-label" for="shaderIntensity">Intensität</label>
+          <input id="shaderIntensity" type="range" min="0" max="1" step="0.01" value="0.65" />
+        </section>
+
+        <section class="toolbar-section" aria-label="Replay Export">
+          <h2>Replay</h2>
+          <button type="button" id="exportReplayButton">CZML Export herunterladen</button>
+        </section>
+
+        <section class="toolbar-section" aria-label="Status">
+          <h2>Status</h2>
+          <p id="statusText">Initialisiere Cesium Viewer…</p>
+          <p id="healthText">Netzwerk: online</p>
+        </section>
+
+        <section class="toolbar-section" aria-label="Attribution">
+          <h2>Attribution</h2>
+          <p class="attribution-text">Google Photorealistic 3D Tiles • CesiumJS • OpenSky • Celestrak • Free-Tier Datenquellen</p>
+        </section>
+      </aside>
+
+      <div id="cesiumContainer"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

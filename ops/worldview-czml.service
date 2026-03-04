@@ -1,0 +1,27 @@
+[Unit]
+Description=WorldView CZML Generator Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=__APP_GROUP__
+WorkingDirectory=__REPO_DIR__
+Environment=PYTHONUNBUFFERED=1
+# Kostenfrei weil Free-Tier / GitHub Student Pack
+ExecStart=__REPO_DIR__/.venv/bin/python __REPO_DIR__/tools/czml_generator.py --once --out __REPO_DIR__
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=__REPO_DIR__/data
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
+
