@@ -14,6 +14,9 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Verify Build Gates
+    defaults:
+      run:
+        working-directory: Worldview
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,30 +28,47 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: Worldview/package-lock.json
+          cache-dependency-path: |
+            Worldview/package-lock.json
+            **/Worldview/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: Worldview
 
       - name: Typecheck
         run: npm run typecheck
-        working-directory: Worldview
 
       - name: Build
         run: npm run build
-        working-directory: Worldview
 
   deploy_job:
     if: github.event_name == 'push'
     needs: verify_job
     runs-on: ubuntu-latest
     name: Deploy to Azure Static Web Apps
+    defaults:
+      run:
+        working-directory: Worldview
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
           lfs: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            Worldview/package-lock.json
+            **/Worldview/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
 
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
