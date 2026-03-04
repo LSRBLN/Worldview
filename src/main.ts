@@ -10,6 +10,10 @@ import {
   degreesLong,
   type SatRec
 } from 'satellite.js';
+import { injectSpeedInsights } from '@vercel/speed-insights';
+
+// Initialize Vercel Speed Insights
+injectSpeedInsights();
 
 // Kostenfrei weil Free-Tier / GitHub Student Pack
 (window as unknown as { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = '/cesium';
