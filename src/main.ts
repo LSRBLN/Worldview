@@ -3278,7 +3278,8 @@ function initAISStreamLiveShips(): void {
   const aisKey = import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined;
   
   if (!aisKey) {
-    console.info('[AISStream] Kein API Key konfiguriert - überspringe');
+    console.info('[AISStream] Kein API Key konfiguriert - nutze Fallback');
+    buildAisFallbackLayer();
     return;
   }
 
@@ -3381,6 +3382,7 @@ createBottomLayerBar();
 setShaderMode('none');
 setShaderIntensity(0.65);
 buildJammingLayerFromReplay();
+buildAisFallbackLayer(); // AIS-FallbackLayer initialisieren (immer sichtbar)
 installRoadTrafficParticles();
 installCctvIcons();
 setStatus('Viewer initialized. Loading Google 3D Tiles…');
