@@ -618,8 +618,20 @@ const viewer = new Cesium.Viewer(container, {
   selectionIndicator: false,
   infoBox: false,
   requestRenderMode: true,
-  maximumRenderTimeChange: Infinity
+  maximumRenderTimeChange: Infinity,
+  targetFrameRate: 30, // Performance: 30 FPS statt unbegrenzt
+  useBrowserRecommendedResolution: false, // Volle Auflösung
+  scene3DOnly: true, // Performance: Nur 3D, keine 2D/2.5D
+  orderIndependentTranslucency: false // Performance: Bessere Performance bei Transparenz
 });
+
+// Performance-Optimierungen für die Scene
+viewer.scene.fog.enabled = false; // Performance: Nebel deaktiviert
+viewer.scene.globe.depthTestAgainstTerrain = false; // Performance: Kein Depth Testing
+viewer.scene.globe.maximumScreenSpaceError = 2; // Performance: Niedrigere Detailstufe
+
+// Frame-Rate-Limitierung für Batterie-Schonung
+viewer.targetFrameRate = 30;
 
 const pointerHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
@@ -1078,8 +1090,8 @@ const satellitesReplayChunks: object[][] = [
       path: {
         resolution: 120,
         width: 1.5,
-        leadTime: 1800,
-        trailTime: 1800,
+        leadTime: 600, // Performance: Reduziert von 1800s (30min) auf 600s (10min)
+        trailTime: 600, // Performance: Reduziert für bessere FPS
         material: {
           solidColor: {
             color: { rgba: [255, 255, 0, 190] }
@@ -1113,8 +1125,8 @@ const satellitesReplayChunks: object[][] = [
       path: {
         resolution: 120,
         width: 1.2,
-        leadTime: 1800,
-        trailTime: 1800,
+        leadTime: 600, // Performance: Reduziert
+        trailTime: 600, // Performance: Reduziert
         material: {
           solidColor: {
             color: { rgba: [255, 170, 60, 180] }
@@ -1152,8 +1164,8 @@ const adsbReplayChunks: object[][] = [
       path: {
         resolution: 120,
         width: 1.2,
-        leadTime: 1800,
-        trailTime: 1800,
+        leadTime: 600, // Performance: Reduziert
+        trailTime: 600, // Performance: Reduziert
         material: {
           solidColor: {
             color: { rgba: [0, 200, 255, 210] }
@@ -1190,8 +1202,8 @@ const adsbReplayChunks: object[][] = [
       path: {
         resolution: 120,
         width: 1.2,
-        leadTime: 1800,
-        trailTime: 1800,
+        leadTime: 600, // Performance: Reduziert
+        trailTime: 600, // Performance: Reduziert
         material: {
           solidColor: {
             color: { rgba: [255, 50, 50, 220] }
@@ -1399,7 +1411,7 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
         resolution: 120,
         width: 1.1,
         leadTime: 0,
-        trailTime: 1800,
+        trailTime: 600, // Performance: Reduziert von 1800s auf 600s
         material: Cesium.Color.WHITE.withAlpha(0.72)
       },
       properties: {
@@ -1585,8 +1597,8 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
       path: {
         resolution: 120,
         width: isMilitary ? 1.5 : 1.2,
-        leadTime: 600,
-        trailTime: 1200,
+        leadTime: 300, // Performance: Reduziert
+        trailTime: 600, // Performance: Reduziert
         material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
       },
       label: {
@@ -1748,8 +1760,8 @@ async function pollAdsbLayer(): Promise<void> {
           path: {
             resolution: 120,
             width: isMilitary ? 1.5 : 1.2,
-            leadTime: 600,
-            trailTime: 1200,
+            leadTime: 300, // Performance: Reduziert
+            trailTime: 600, // Performance: Reduziert
             material: isMilitary ? Cesium.Color.RED.withAlpha(0.7) : Cesium.Color.fromCssColorString('#ffb347').withAlpha(0.62)
           },
           label: {
@@ -1904,7 +1916,7 @@ function buildAisFallbackLayer(): void {
         resolution: 120,
         width: 1,
         leadTime: 0,
-        trailTime: 1800,
+        trailTime: 600, // Performance: Reduziert
         material: Cesium.Color.CYAN.withAlpha(0.55)
       }
     });
@@ -2137,7 +2149,7 @@ function upsertLiveAisShip(ship: ParsedAisShip, nowEpochMs: number): void {
         resolution: 120,
         width: 1.25,
         leadTime: 0,
-        trailTime: 1800,
+        trailTime: 600, // Performance: Reduziert von 1800s auf 600s
         material: Cesium.Color.fromCssColorString('#7ee7ff').withAlpha(0.72)
       },
       properties: {
