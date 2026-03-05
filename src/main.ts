@@ -2988,14 +2988,12 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
 
     console.info('[WorldView][Tiles] Starte direkten Google API-Key Pfad');
     // Kostenfrei weil Free-Tier / GitHub Student Pack
-    // Variante 1 – Direkte URL mit fromUrl:
-    const tileset = await Cesium.Cesium3DTileset.fromUrl(
-      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
-      {
-        showCreditsOnScreen: true,
-        maximumScreenSpaceError: 2
-      }
-    );
+    // Variante 1 – Direkte URL (empfohlen, einfach):
+    const tilesetUrl = `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`;
+    const tileset = await Cesium.Cesium3DTileset.fromUrl(tilesetUrl, {
+      showCreditsOnScreen: true,
+      maximumScreenSpaceError: 2
+    });
     viewer.scene.primitives.add(tileset);
     viewer.scene.globe.show = false; // Globe aus, nur Tiles
     setSceneGlobeVisibility(false, 'google-direct-tileset-ready');
@@ -3009,16 +3007,33 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
       directError
     });
 
-    ensureVisibleFreeTierGlobeFallback('Google Tiles fehlgeschlagen (Direct)');
-    // God’s Eye Original-Look – Bilawal-Video March 2026
-    // Klare Produktions-Hilfe für Vercel: exakt notwendige Env-Variable im HUD.
-    showTilesFallbackOverlay('Google Map Tiles API nicht verfügbar. Setze in Vercel ENV exakt: VITE_GOOGLE_MAP_TILES_KEY=... (Map Tiles API Key). OSM-Fallback aktiv.');
-    updateRuntimeDiagnostics({
-      tilesPath: 'OSM Fallback',
-      tilesDetail: 'Google Map Tiles API direct fehlgeschlagen (Key/Quota/Referrer). Benötigt: VITE_GOOGLE_MAP_TILES_KEY in Vercel.'
-    });
-    setStatus('Fallback active: globe visible, Google Map Tiles API unavailable.');
-    setHealth('Network: degraded • Google Tiles fallback active');
+    // Variante 2 – Google Helper (Cesium.createGooglePhotorealistic3DTileset)
+    // Offizieller CesiumJS-Helfer – oft robuster als direkte URL
+    try {
+      console.info('[WorldView][Tiles] Versuche Google Helper (createGooglePhotorealistic3DTileset)');
+      const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+      viewer.scene.primitives.add(tileset);
+      viewer.scene.globe.show = false; // Globe aus, nur Tiles
+      setSceneGlobeVisibility(false, 'google-helper-tileset-ready');
+      updateRuntimeDiagnostics({
+        tilesPath: 'Google Helper',
+        tilesDetail: 'Cesium createGooglePhotorealistic3DTileset() aktiv'
+      });
+      setStatus('Google Photorealistic 3D Tiles active (Cesium helper).');
+    } catch (helperError) {
+      console.error('[WorldView][Tiles] Google Helper auch fehlgeschlagen', {
+        helperError
+      });
+
+      ensureVisibleFreeTierGlobeFallback('Google Tiles fehlgeschlagen (Direct + Helper)');
+      showTilesFallbackOverlay('Google Map Tiles API nicht verfügbar. Setze in Vercel ENV exakt: VITE_GOOGLE_MAP_TILES_KEY=... (Map Tiles API Key). OSM-Fallback aktiv.');
+      updateRuntimeDiagnostics({
+        tilesPath: 'OSM Fallback',
+        tilesDetail: 'Google Map Tiles API + Helper fehlgeschlagen. Benötigt: VITE_GOOGLE_MAP_TILES_KEY in Vercel.'
+      });
+      setStatus('Fallback active: globe visible, Google Map Tiles unavailable.');
+      setHealth('Network: degraded • Google Tiles fallback active');
+    }
   }
 
   flyToPreset('hormuz');
