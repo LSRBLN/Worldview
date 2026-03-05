@@ -1365,6 +1365,18 @@ const liveSatellites = new Map<string, {
   track: Cesium.SampledPositionProperty;
 }>();
 
+function resolveSatelliteStyle(rawName: string): { displayName: string; color: Cesium.Color; size: number } {
+  const categoryMatch = rawName.match(/^\[(\w+)](.*)$/);
+  const category = (categoryMatch?.[1] ?? 'active') as SatelliteCategory;
+  const displayName = (categoryMatch?.[2] ?? rawName).trim();
+  const style = satelliteCategories[category] ?? satelliteCategories.active;
+  return {
+    displayName,
+    color: Cesium.Color.fromCssColorString(style.color),
+    size: style.size
+  };
+}
+
 function upsertLiveSatellite(name: string, satrec: SatRec): void {
   const now = new Date();
   const positionAndVelocity = propagate(satrec, now);
@@ -1381,6 +1393,7 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
   const height = geodetic.height * 1000;
   const cartesian = Cesium.Cartesian3.fromDegrees(lon, lat, height);
   const nowJulian = Cesium.JulianDate.fromDate(now);
+  const satelliteStyle = resolveSatelliteStyle(name);
 
   if (!liveSatellites.has(name)) {
     const sampledTrack = new Cesium.SampledPositionProperty();
@@ -1392,18 +1405,18 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
 
     const entity = layerCollections.satellites.entities.add({
       id: `live-sat-${name}`,
-      name,
+      name: satelliteStyle.displayName,
       position: sampledTrack,
       point: {
-        pixelSize: 7,
-        color: Cesium.Color.WHITE,
+        pixelSize: satelliteStyle.size,
+        color: satelliteStyle.color,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 1
       },
       label: {
-        text: `NORAD ${name}`,
+        text: `${satelliteStyle.displayName}`,
         font: '10pt monospace',
-        fillColor: Cesium.Color.WHITE,
+        fillColor: satelliteStyle.color,
         pixelOffset: new Cesium.Cartesian2(10, -10)
       },
       path: {
@@ -1412,10 +1425,10 @@ function upsertLiveSatellite(name: string, satrec: SatRec): void {
         width: 1.1,
         leadTime: 0,
         trailTime: 600, // Performance: Reduziert von 1800s auf 600s
-        material: Cesium.Color.WHITE.withAlpha(0.72)
+        material: satelliteStyle.color.withAlpha(0.72)
       },
       properties: {
-        callsign: name,
+        callsign: satelliteStyle.displayName,
         noradId: name,
         speedKts: null
       }
@@ -1440,7 +1453,7 @@ async function pollCelestrakLayer(): Promise<void> {
     }
 
     const lines = await fetchLiveTleLines();
-    const maxSatellites = Math.min(24, Math.floor(lines.length / 3));
+    const maxSatellites = Math.min(80, Math.floor(lines.length / 3));
 
     for (let i = 0; i < maxSatellites; i += 1) {
       const base = i * 3;
@@ -3157,7 +3170,7 @@ async function initOpenSkyLiveFlights(): Promise<void> {
       openSkyDataSource?.entities.removeAll();
 
       data.states.forEach((state: any[]) => {
-        const [icao24, callsign, , , , lon, lat, baroAltitude, onGround, velocity] = state;
+        const [icao24, callsign, originCountry, , , lon, lat, baroAltitude, onGround, velocity, heading] = state;
 
         if (!lon || !lat || onGround) return; // nur fliegende
 
@@ -3172,7 +3185,9 @@ async function initOpenSkyLiveFlights(): Promise<void> {
             image: planeBlueIconDataUri,
             scale: 0.6,
             verticalOrigin: Cesium.VerticalOrigin.CENTER,
-            color: Cesium.Color.fromCssColorString('#00ff9d')
+            color: speed > 700 ? Cesium.Color.fromCssColorString('#ff5a5a') : Cesium.Color.fromCssColorString('#00ff9d'),
+            rotation: heading ? Cesium.Math.toRadians(Number(heading)) : 0,
+            alignedAxis: Cesium.Cartesian3.UNIT_Z
           },
           label: {
             text: (callsign || icao24).trim().substring(0, 8),
@@ -3186,6 +3201,7 @@ async function initOpenSkyLiveFlights(): Promise<void> {
           properties: {
             icao24,
             callsign: callsign || 'UNKNOWN',
+            originCountry: originCountry || 'UNKNOWN',
             altitude: Math.round(alt),
             speed,
             source: 'OpenSky Network'
