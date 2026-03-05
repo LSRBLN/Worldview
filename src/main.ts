@@ -3233,6 +3233,11 @@ async function initOpenSkyLiveFlights(): Promise<void> {
 // === ALTERNATIVE ADS-B QUELLE: opendata.adsb.fi (kein Rate-Limit) ===
 // Kostenfrei weil Free-Tier / GitHub Student Pack
 let adsbFiDataSource: Cesium.CustomDataSource | null = null;
+const adsbFiTracks = new Map<string, {
+  entity: Cesium.Entity;
+  position: Cesium.SampledPositionProperty;
+  lastSeenEpochMs: number;
+}>();
 
 async function initAdsbFiFlights(): Promise<void> {
   // opendata.adsb.fi - kostenlose ADS-B Daten ohne Rate-Limit
@@ -3260,8 +3265,6 @@ async function initAdsbFiFlights(): Promise<void> {
         return;
       }
 
-      adsbFiDataSource?.entities.removeAll();
-
       data.aircraft.forEach((aircraft: any) => {
         if (!aircraft.lat || !aircraft.lon || aircraft.ground) return;
         
@@ -3269,32 +3272,87 @@ async function initAdsbFiFlights(): Promise<void> {
         const speed = aircraft.gs || 0;
         const callsign = aircraft.callsign || aircraft.icao24;
         
-        adsbFiDataSource?.entities.add({
-          id: `adsbfi-${aircraft.icao24}`,
-          position: Cesium.Cartesian3.fromDegrees(aircraft.lon, aircraft.lat, alt),
-          billboard: {
-            image: planeBlueIconDataUri,
-            scale: 0.55,
-            verticalOrigin: Cesium.VerticalOrigin.CENTER,
-            color: Cesium.Color.fromCssColorString('#ffb347')
-          },
-          label: {
-            text: callsign ? callsign.trim().substring(0, 8) : aircraft.icao24,
-            font: 'bold 10px "Courier New", monospace',
-            fillColor: Cesium.Color.fromCssColorString('#ffb347'),
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            pixelOffset: new Cesium.Cartesian2(0, -20),
-            show: true
-          },
-          properties: {
-            icao24: aircraft.icao24,
-            callsign: callsign || 'UNKNOWN',
-            altitude: alt,
-            speed: Math.round(speed * 1.852), // knots to km/h
-            source: 'ADSB.fi'
+        const id = `adsbfi-${aircraft.icao24}`;
+        const now = new Date();
+        const nowJulian = Cesium.JulianDate.fromDate(now);
+        const cartesian = Cesium.Cartesian3.fromDegrees(aircraft.lon, aircraft.lat, alt);
+        const headingDeg = Number(aircraft.track ?? aircraft.true_track ?? 0);
+        const entityColor = speed > 450
+          ? Cesium.Color.fromCssColorString('#ff6b6b')
+          : Cesium.Color.fromCssColorString('#ffb347');
+
+        const existing = adsbFiTracks.get(id);
+        if (!existing) {
+          const sampledPosition = new Cesium.SampledPositionProperty();
+          sampledPosition.setInterpolationOptions({
+            interpolationAlgorithm: Cesium.LinearApproximation,
+            interpolationDegree: 1
+          });
+          sampledPosition.addSample(nowJulian, cartesian);
+
+          const entity = adsbFiDataSource?.entities.add({
+            id,
+            position: sampledPosition,
+            billboard: {
+              image: planeBlueIconDataUri,
+              scale: 0.55,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              color: entityColor,
+              rotation: Cesium.Math.toRadians(headingDeg),
+              alignedAxis: Cesium.Cartesian3.UNIT_Z
+            },
+            label: {
+              text: callsign ? callsign.trim().substring(0, 8) : aircraft.icao24,
+              font: 'bold 10px "Courier New", monospace',
+              fillColor: entityColor,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              pixelOffset: new Cesium.Cartesian2(0, -20),
+              show: true
+            },
+            path: {
+              resolution: 60,
+              width: 1.0,
+              leadTime: 0,
+              trailTime: 300,
+              material: entityColor.withAlpha(0.55)
+            },
+            properties: {
+              icao24: aircraft.icao24,
+              callsign: callsign || 'UNKNOWN',
+              altitude: alt,
+              speed: Math.round(speed * 1.852), // knots to km/h
+              source: 'ADSB.fi'
+            }
+          });
+
+          if (entity) {
+            adsbFiTracks.set(id, {
+              entity,
+              position: sampledPosition,
+              lastSeenEpochMs: now.getTime()
+            });
           }
-        });
+          return;
+        }
+
+        existing.position.addSample(nowJulian, cartesian);
+        existing.lastSeenEpochMs = now.getTime();
+        if (existing.entity.billboard) {
+          existing.entity.billboard.rotation = new Cesium.ConstantProperty(Cesium.Math.toRadians(headingDeg));
+          existing.entity.billboard.color = new Cesium.ConstantProperty(entityColor);
+        }
+        if (existing.entity.label) {
+          existing.entity.label.fillColor = new Cesium.ConstantProperty(entityColor);
+        }
+      });
+
+      const staleBefore = Date.now() - 120_000;
+      adsbFiTracks.forEach((track, id) => {
+        if (track.lastSeenEpochMs < staleBefore) {
+          adsbFiDataSource?.entities.removeById(id);
+          adsbFiTracks.delete(id);
+        }
       });
 
       console.log(`[ADSB.fi] Loaded ${data.aircraft.length} flights`);
