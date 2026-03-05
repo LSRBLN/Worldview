@@ -3064,12 +3064,42 @@ async function initOpenSkyLiveFlights(): Promise<void> {
   openSkyDataSource.clustering.pixelRange = 60;
   openSkyDataSource.clustering.minimumClusterSize = 4;
   
+  let isRateLimited = false;
+  
   async function updateFlights() {
+    // Skip if rate limited - wait for next cycle
+    if (isRateLimited) {
+      console.log('[OpenSky] Rate limit active, skipping update');
+      return;
+    }
+    
     try {
       // Bounding Box für MENA Region (ca. 20°N-40°N, 30°E-60°E)
-      const res = await fetch(`${openSkyBaseUrl}/states/all?lamin=20&lamax=40&lomin=30&lomax=60`);
+      const url = `${openSkyBaseUrl}/states/all?lamin=20&lamax=40&lomin=30&lomax=60`;
+      
+      // Optional: Auth falls konfiguriert
+      const openSkyUser = import.meta.env.VITE_OPENSKY_USERNAME as string | undefined;
+      const openSkyPass = import.meta.env.VITE_OPENSKY_PASSWORD as string | undefined;
+      
+      const headers: Record<string, string> = {};
+      if (openSkyUser && openSkyPass) {
+        const auth = btoa(`${openSkyUser}:${openSkyPass}`);
+        headers['Authorization'] = `Basic ${auth}`;
+      }
+      
+      const res = await fetch(url, { headers });
+      
+      if (res.status === 429) {
+        console.warn('[OpenSky] Rate limit (429) hit – waiting 30 seconds');
+        isRateLimited = true;
+        markPollStatus('flights', 'opensky-rate-limited');
+        setTimeout(() => { isRateLimited = false; }, 30000);
+        return;
+      }
+      
       if (!res.ok) {
         console.warn('[OpenSky] API Fehler:', res.status);
+        markPollStatus('flights', `opensky-error-${res.status}`);
         return;
       }
 
@@ -3078,7 +3108,7 @@ async function initOpenSkyLiveFlights(): Promise<void> {
         return;
       }
 
-      // Alte Entities entfernen (oder updaten – hier neu für Einfachheit)
+      // Alte Entities entfernen
       openSkyDataSource?.entities.removeAll();
 
       data.states.forEach((state: any[]) => {
@@ -3090,7 +3120,7 @@ async function initOpenSkyLiveFlights(): Promise<void> {
         const speed = velocity ? Math.round(velocity * 3.6) : 0; // km/h
         
         // Flugzeug-Entity erstellen
-        const entity = openSkyDataSource?.entities.add({
+        openSkyDataSource?.entities.add({
           id: `opensky-${icao24}`,
           position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
           billboard: {
@@ -3118,6 +3148,7 @@ async function initOpenSkyLiveFlights(): Promise<void> {
         });
       });
 
+      console.log(`[OpenSky] Loaded ${data.states.length} flights`);
       markPollStatus('flights', 'opensky-online');
       viewer.scene.requestRender();
     } catch (err) {
@@ -3126,9 +3157,14 @@ async function initOpenSkyLiveFlights(): Promise<void> {
     }
   }
 
-  // Alle 12 Sekunden aktualisieren (Rate-Limit-sicher)
+  // Alle 15 Sekunden aktualisieren (sicherer Rate-Limit)
   updateFlights();
-  window.setInterval(updateFlights, 12000);
+  const openSkyInterval = window.setInterval(updateFlights, 15000);
+  
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    clearInterval(openSkyInterval);
+  });
   
   console.info('[OpenSky] Live Flights initialisiert');
 }
