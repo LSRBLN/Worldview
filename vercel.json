@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/opensky/:path*",
+      "destination": "https://opensky-network.org/api/:path*"
+    },
+    {
       "source": "/api/adsb",
       "destination": "https://opendata.adsb.fi/api/v2/lat/24/lon/44/dist/220"
     },

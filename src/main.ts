@@ -365,6 +365,14 @@ function applyFlightVisibilityFilters(): void {
   adsbTrackRegistry.forEach((meta) => {
     meta.entity.show = matchesFlightVisibility(meta);
   });
+  const adsbEntityCount = layerCollections.adsb.entities.values.length;
+  console.info('[WorldView][ADS-B] Visibility applied', {
+    tracked: adsbTrackRegistry.size,
+    entities: adsbEntityCount,
+    mode: flightVisibilityState.mode,
+    altitudeBand: flightVisibilityState.altitudeBand,
+    staleOnly: flightVisibilityState.staleOnly
+  });
   viewer.scene.requestRender();
 }
 
@@ -522,7 +530,19 @@ console.info('[WorldView][Boot] Container-Größe beim Start', {
 const googleMapTilesKey = (import.meta.env.VITE_GOOGLE_MAP_TILES_KEY as string | undefined)?.trim();
 const arcgisApiKey = (import.meta.env.VITE_ARCGIS_API_KEY as string | undefined)?.trim();
 const arcgisBasemapStyle = (import.meta.env.VITE_ARCGIS_BASEMAP_STYLE as string | undefined)?.trim() || 'arcgis/light-gray';
-const openSkyBaseUrl = ((import.meta.env.VITE_OPENSKY_BASE_URL as string | undefined)?.trim() || 'https://opensky-network.org/api');
+// Browser-CORS-freundlich: OpenSky immer über gleichoriginären Proxy laufen lassen,
+// außer es wurde explizit ein relativer API-Pfad gesetzt.
+const configuredOpenSkyBaseUrl = (import.meta.env.VITE_OPENSKY_BASE_URL as string | undefined)?.trim();
+const openSkyBaseUrl = (() => {
+  if (!configuredOpenSkyBaseUrl) {
+    return '/api/opensky';
+  }
+  if (configuredOpenSkyBaseUrl.startsWith('/')) {
+    return configuredOpenSkyBaseUrl;
+  }
+  // Absolute URLs würden im Browser zu CORS führen -> Proxy erzwingen
+  return '/api/opensky';
+})();
 const openSkyUsername = (import.meta.env.VITE_OPENSKY_USERNAME as string | undefined)?.trim();
 const openSkyPassword = (import.meta.env.VITE_OPENSKY_PASSWORD as string | undefined)?.trim();
 const aisWebSocketUrl = ((import.meta.env.VITE_AIS_WS_URL as string | undefined)?.trim() || 'wss://stream.aisstream.io/v0/stream');
@@ -1591,7 +1611,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
 
   adsbFallbackSeeds.forEach((seed, index) => {
     const existing = adsbTrackRegistry.get(seed.id);
-    if (existing) {
+      if (existing) {
       existing.lastSeenEpochMs = nowEpochMs - (adsbTrackStaleThresholdMs + 1_000);
       existing.altitudeM = seed.altitude;
       existing.isMilitary = seed.isMilitary;
@@ -1631,8 +1651,7 @@ function upsertAdsbFallbackTracks(sourceLabel: string): void {
         image: isMilitary ? planeRedIconDataUri : planeBlueIconDataUri,
         scale: 0.46,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        color: flightColor,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
+        color: flightColor
       },
       path: {
         resolution: 120,
@@ -1692,6 +1711,7 @@ async function pollAdsbLayer(): Promise<void> {
       setHealth('OpenSky states/all unavailable • switching to OpenSky fallback');
       activeFeedLabel = 'OpenSky fallback';
       // Hier werden Fallback-Daten geladen statt Fehler zu werfen
+      setLayerVisibility('adsb', true);
       upsertAdsbFallbackTracks('OpenSky fallback');
       setDataSourceVisibility(replaySources.adsb, true);
       return;
@@ -1797,8 +1817,7 @@ async function pollAdsbLayer(): Promise<void> {
             image: isBlue ? planeBlueIconDataUri : planeRedIconDataUri,
             scale: 0.46,
             verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            color: flightColor,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20_000_000)
+            color: flightColor
           },
           path: {
             resolution: 120,
@@ -1909,6 +1928,7 @@ async function pollAdsbLayer(): Promise<void> {
     console.warn('ADS-B Polling fehlgeschlagen', error);
     // God’s Eye Original-Look – Bilawal-Video March 2026
     // Produktions-Hardening: Bei API/CORS/Rate-Limit Fehlern bleibt mindestens Replay/CZML-Flugverkehr sichtbar.
+    setLayerVisibility('adsb', true);
     upsertAdsbFallbackTracks('Offline fallback');
     setDataSourceVisibility(replaySources.adsb, true);
     pushIncident('OpenSky unavailable • fallback tactical air picture engaged', 'WARN');
@@ -2228,6 +2248,7 @@ function upsertLiveAisShip(ship: ParsedAisShip, nowEpochMs: number): void {
 
 function switchToAisFallback(reason: string): void {
   closeAisSocket();
+  setLayerVisibility('ais', true);
   liveAisTracks.clear();
   buildAisFallbackLayer();
   updateRuntimeDiagnostics({
@@ -3499,3 +3520,9 @@ void loadReplayData();
 startRateLimitedPollers();
 addArcGisStaticBasemapOverlay();
 void addGooglePhotorealisticTiles();
+
+// Produktions-Hardening: Layer nach Boot explizit aktivieren
+setLayerVisibility('adsb', true);
+setLayerVisibility('ais', true);
+setLayerVisibility('satellites', true);
+showAllObjects();
