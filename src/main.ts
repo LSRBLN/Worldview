@@ -3044,7 +3044,9 @@ function startRateLimitedPollers(): void {
   }, 10 * 1000);
   
   // Neue Live-Datenquellen initialisieren
+  // Beide Quellen parallel - opendata.adsb.fi als robuste Alternative
   initOpenSkyLiveFlights();
+  initAdsbFiFlights(); // Alternative ADS-B Quelle (kein Rate-Limit)
   initAISStreamLiveShips();
 }
 
@@ -3167,6 +3169,89 @@ async function initOpenSkyLiveFlights(): Promise<void> {
   });
   
   console.info('[OpenSky] Live Flights initialisiert');
+}
+
+// === ALTERNATIVE ADS-B QUELLE: opendata.adsb.fi (kein Rate-Limit) ===
+// Kostenfrei weil Free-Tier / GitHub Student Pack
+let adsbFiDataSource: Cesium.CustomDataSource | null = null;
+
+async function initAdsbFiFlights(): Promise<void> {
+  // opendata.adsb.fi - kostenlose ADS-B Daten ohne Rate-Limit
+  const adsbFiUrl = import.meta.env.VITE_ADSB_FALLBACK_URL || 'https://opendata.adsb.fi/api/v2/lat/24/lon/44/dist/220';
+  
+  adsbFiDataSource = new Cesium.CustomDataSource('ADSB.fi Live Flights');
+  await viewer.dataSources.add(adsbFiDataSource);
+  
+  // Clustering aktivieren
+  adsbFiDataSource.clustering.enabled = true;
+  adsbFiDataSource.clustering.pixelRange = 60;
+  adsbFiDataSource.clustering.minimumClusterSize = 4;
+  
+  async function updateAdsbFiFlights() {
+    try {
+      const res = await fetch(adsbFiUrl);
+      if (!res.ok) {
+        console.warn('[ADSB.fi] API Fehler:', res.status);
+        markPollStatus('flights', 'adsb-fi-error');
+        return;
+      }
+
+      const data = await res.json();
+      if (!data.aircraft || data.aircraft.length === 0) {
+        return;
+      }
+
+      adsbFiDataSource?.entities.removeAll();
+
+      data.aircraft.forEach((aircraft: any) => {
+        if (!aircraft.lat || !aircraft.lon || aircraft.ground) return;
+        
+        const alt = aircraft.alt_baro || aircraft.alt_geom || 10000;
+        const speed = aircraft.gs || 0;
+        const callsign = aircraft.callsign || aircraft.icao24;
+        
+        adsbFiDataSource?.entities.add({
+          id: `adsbfi-${aircraft.icao24}`,
+          position: Cesium.Cartesian3.fromDegrees(aircraft.lon, aircraft.lat, alt),
+          billboard: {
+            image: planeBlueIconDataUri,
+            scale: 0.55,
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            color: Cesium.Color.fromCssColorString('#ffb347')
+          },
+          label: {
+            text: callsign ? callsign.trim().substring(0, 8) : aircraft.icao24,
+            font: 'bold 10px "Courier New", monospace',
+            fillColor: Cesium.Color.fromCssColorString('#ffb347'),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            pixelOffset: new Cesium.Cartesian2(0, -20),
+            show: true
+          },
+          properties: {
+            icao24: aircraft.icao24,
+            callsign: callsign || 'UNKNOWN',
+            altitude: alt,
+            speed: Math.round(speed * 1.852), // knots to km/h
+            source: 'ADSB.fi'
+          }
+        });
+      });
+
+      console.log(`[ADSB.fi] Loaded ${data.aircraft.length} flights`);
+      markPollStatus('flights', 'adsb-fi-online');
+      viewer.scene.requestRender();
+    } catch (err) {
+      console.warn('[ADSB.fi] Fehler:', err);
+      markPollStatus('flights', 'adsb-fi-error');
+    }
+  }
+
+  // Alle 10 Sekunden aktualisieren (opendata.adsb.fi hat kein bekanntes Rate-Limit)
+  updateAdsbFiFlights();
+  window.setInterval(updateAdsbFiFlights, 10000);
+  
+  console.info('[ADSB.fi] Live Flights initialisiert');
 }
 
 // === LIVE SCHIFFE – AISStream.io (kostenlos) ===
