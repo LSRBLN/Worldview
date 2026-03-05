@@ -953,17 +953,18 @@ function buildNoFlyZonesLayer(): void {
   layerCollections.noFlyZones.entities.add({
     id: 'no-fly-iran-main',
     name: 'No-Fly Zone Iran',
-    polygon: {
-      hierarchy: Cesium.Cartesian3.fromDegreesArray([
-        44.5, 25.0,
-        63.8, 25.0,
-        63.8, 39.9,
-        44.5, 39.9
-      ]),
-      material: Cesium.Color.ORANGE.withAlpha(0.22),
-      outline: true,
-      outlineColor: Cesium.Color.ORANGE.withAlpha(0.95)
-    },
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray([
+          44.5, 25.0,
+          63.8, 25.0,
+          63.8, 39.9,
+          44.5, 39.9
+        ]),
+        height: 0,
+        material: Cesium.Color.ORANGE.withAlpha(0.22),
+        outline: true,
+        outlineColor: Cesium.Color.ORANGE.withAlpha(0.95)
+      },
     label: {
       text: 'NO-FLY IRAN',
       font: '11pt monospace',
@@ -979,17 +980,18 @@ function buildNoFlyZonesLayer(): void {
   layerCollections.noFlyZones.entities.add({
     id: 'no-fly-gulf-hormuz',
     name: 'No-Fly Zone Gulf / Hormuz',
-    polygon: {
-      hierarchy: Cesium.Cartesian3.fromDegreesArray([
-        47.8, 22.0,
-        60.4, 22.0,
-        60.4, 31.7,
-        47.8, 31.7
-      ]),
-      material: Cesium.Color.ORANGE.withAlpha(0.18),
-      outline: true,
-      outlineColor: Cesium.Color.ORANGE.withAlpha(0.9)
-    },
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray([
+          47.8, 22.0,
+          60.4, 22.0,
+          60.4, 31.7,
+          47.8, 31.7
+        ]),
+        height: 0,
+        material: Cesium.Color.ORANGE.withAlpha(0.18),
+        outline: true,
+        outlineColor: Cesium.Color.ORANGE.withAlpha(0.9)
+      },
     label: {
       text: 'NO-FLY GULF',
       font: '10pt monospace',
@@ -2387,17 +2389,18 @@ function buildJammingLayerFromReplay(): void {
   layerCollections.jamming.entities.add({
     id: 'jamming-dynamic-hormuz',
     name: 'GPS Jamming Dynamic Hormuz',
-    polygon: {
-      hierarchy: Cesium.Cartesian3.fromDegreesArray([
-        55.7, 26.4,
-        56.8, 26.4,
-        56.8, 25.4,
-        55.7, 25.4
-      ]),
-      material: pulseColor,
-      outline: true,
-      outlineColor: Cesium.Color.RED.withAlpha(0.96)
-    },
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray([
+          55.7, 26.4,
+          56.8, 26.4,
+          56.8, 25.4,
+          55.7, 25.4
+        ]),
+        height: 0,
+        material: pulseColor,
+        outline: true,
+        outlineColor: Cesium.Color.RED.withAlpha(0.96)
+      },
     label: {
       text: 'GPS JAMMING (DYNAMIC)',
       font: '10pt monospace',
@@ -2414,17 +2417,18 @@ function buildJammingLayerFromReplay(): void {
     id: 'jamming-iran-static',
     name: 'GPS Jamming Static Iran',
     position: Cesium.Cartesian3.fromDegrees(52.5, 30.5, 1000),
-    polygon: {
-      hierarchy: Cesium.Cartesian3.fromDegreesArray([
-        51.9, 31.1,
-        53.2, 31.1,
-        53.2, 29.9,
-        51.9, 29.9
-      ]),
-      material: Cesium.Color.RED.withAlpha(0.28),
-      outline: true,
-      outlineColor: Cesium.Color.RED.withAlpha(0.98)
-    },
+      polygon: {
+        hierarchy: Cesium.Cartesian3.fromDegreesArray([
+          51.9, 31.1,
+          53.2, 31.1,
+          53.2, 29.9,
+          51.9, 29.9
+        ]),
+        height: 0,
+        material: Cesium.Color.RED.withAlpha(0.28),
+        outline: true,
+        outlineColor: Cesium.Color.RED.withAlpha(0.98)
+      },
     label: {
       text: 'GPS JAMMING (STATIC)',
       font: '11pt monospace',
@@ -3100,9 +3104,8 @@ function startRateLimitedPollers(): void {
   }, 10 * 1000);
   
   // Neue Live-Datenquellen initialisieren
-  // Beide Quellen parallel - opendata.adsb.fi als robuste Alternative
-  initOpenSkyLiveFlights();
-  initAdsbFiFlights(); // Alternative ADS-B Quelle (kein Rate-Limit)
+  // Produktions-Hardening: Nur zentraler pollAdsbLayer() für Flüge nutzen,
+  // damit es keine doppelten OpenSky-Requests (429) oder ADSB.fi-CORS Fehler gibt.
   initAISStreamLiveShips();
 }
 
@@ -3241,7 +3244,8 @@ const adsbFiTracks = new Map<string, {
 
 async function initAdsbFiFlights(): Promise<void> {
   // opendata.adsb.fi - kostenlose ADS-B Daten ohne Rate-Limit
-  const adsbFiUrl = import.meta.env.VITE_ADSB_FALLBACK_URL || 'https://opendata.adsb.fi/api/v2/lat/24/lon/44/dist/220';
+  // Nutzung über gleichen Origin verhindert CORS-Probleme auf Vercel
+  const adsbFiUrl = import.meta.env.VITE_ADSB_FALLBACK_URL || '/api/adsb';
   
   adsbFiDataSource = new Cesium.CustomDataSource('ADSB.fi Live Flights');
   await viewer.dataSources.add(adsbFiDataSource);
