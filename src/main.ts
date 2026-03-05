@@ -1651,7 +1651,10 @@ async function pollAdsbLayer(): Promise<void> {
       console.warn('[WorldView][Flights] OpenSky states/all fehlgeschlagen, nutze Fallback', openSkyError);
       setHealth('OpenSky states/all unavailable • switching to OpenSky fallback');
       activeFeedLabel = 'OpenSky fallback';
-      throw openSkyError;
+      // Hier werden Fallback-Daten geladen statt Fehler zu werfen
+      upsertAdsbFallbackTracks('OpenSky fallback');
+      setDataSourceVisibility(replaySources.adsb, true);
+      return;
     }
 
     const militaryTracks: Array<{ callsign: string; altitude: string; speed: string; source: string }> = [];
@@ -3271,8 +3274,6 @@ async function initAdsbFiFlights(): Promise<void> {
 
 // === LIVE SCHIFFE – AISStream.io (kostenlos) ===
 // Kostenfrei weil Free-Tier / GitHub Student Pack
-let aisDataSource: Cesium.CustomDataSource | null = null;
-
 function initAISStreamLiveShips(): void {
   const aisKey = import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined;
   
@@ -3281,14 +3282,11 @@ function initAISStreamLiveShips(): void {
     return;
   }
 
-  // DataSource erstellen
-  aisDataSource = new Cesium.CustomDataSource('AISStream Live Ships');
-  viewer.dataSources.add(aisDataSource);
-  
+  // Nutze bereits vorhandene layerCollections.ais statt neuer DataSource
   // Clustering aktivieren
-  aisDataSource.clustering.enabled = true;
-  aisDataSource.clustering.pixelRange = 50;
-  aisDataSource.clustering.minimumClusterSize = 3;
+  layerCollections.ais.clustering.enabled = true;
+  layerCollections.ais.clustering.pixelRange = 50;
+  layerCollections.ais.clustering.minimumClusterSize = 3;
 
   function connect() {
     aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
@@ -3317,11 +3315,11 @@ function initAISStreamLiveShips(): void {
         const name = (msg.MetaData.ShipName || 'UNKNOWN').trim();
         const sog = msg.Message.PositionReport?.Sog || 0; // Speed over ground
 
-        let entity = aisDataSource?.entities.getById(`ais-${mmsi}`);
+        let entity = layerCollections.ais.entities.getById(`ais-${mmsi}`);
 
         if (!entity) {
           // Neues Schiff erstellen
-          aisDataSource?.entities.add({
+          layerCollections.ais.entities.add({
             id: `ais-${mmsi}`,
             position: Cesium.Cartesian3.fromDegrees(pos.Longitude, pos.Latitude, 0),
             billboard: {
