@@ -1467,15 +1467,52 @@ async function pollCelestrakLayer(): Promise<void> {
   }
 }
 
+// Satelliten-Kategorien mit Farbcodierung für bessere Übersicht
+const satelliteCategories = {
+  gps: { group: 'gps-ops', color: '#00ff88', label: 'GPS', size: 8 },
+  glonass: { group: 'glo-ops', color: '#ff4444', label: 'GLONASS', size: 8 },
+  galileo: { group: 'galileo', color: '#4488ff', label: 'Galileo', size: 8 },
+  starlink: { group: 'starlink', color: '#ffaa00', label: 'Starlink', size: 6 },
+  iss: { group: 'stations', color: '#ffffff', label: 'ISS', size: 10 },
+  active: { group: 'active', color: '#cccccc', label: 'SAT', size: 7 }
+};
+
+type SatelliteCategory = keyof typeof satelliteCategories;
+
 async function fetchLiveTleLines(): Promise<string[]> {
+  // Kostenfrei weil Free-Tier / GitHub Student Pack
+  // Multi-Source: Versuche verschiedene Satelliten-Kategorien
+  const allLines: string[] = [];
+  const categoryKeys = Object.keys(satelliteCategories) as SatelliteCategory[];
+  
+  for (const key of categoryKeys) {
+    try {
+      const cat = satelliteCategories[key];
+      const response = await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${cat.group}&FORMAT=tle`);
+      if (response.ok) {
+        const tleText = await response.text();
+        const lines = tleText.split('\n').map((line) => line.trim()).filter(Boolean);
+        // Füge Kategorie-Info hinzu (wird in Verarbeitung genutzt)
+        for (let i = 0; i < lines.length; i += 3) {
+          if (lines[i] && lines[i + 1] && lines[i + 2]) {
+            allLines.push(`[${key}]${lines[i]}`, lines[i + 1], lines[i + 2]);
+          }
+        }
+      }
+    } catch {
+      // Einzelne Kategorie kann fehlschlagen, wir fahren fort
+    }
+  }
+  
+  if (allLines.length > 0) {
+    return allLines;
+  }
+  
+  // Fallback: Ivan API
   const tryIvan = async (): Promise<string[] | null> => {
     try {
-      // Kostenfrei weil Free-Tier / GitHub Student Pack
-      // Alternative TLE-Quelle (Ivan Stanojevic API, GEO-fähig) mit tolerantem Parsing.
       const response = await fetch('https://tle.ivanstanojevic.me/api/tle');
-      if (!response.ok) {
-        return null;
-      }
+      if (!response.ok) return null;
       const payload = (await response.json()) as {
         member?: Array<{
           name?: string;
@@ -1487,11 +1524,9 @@ async function fetchLiveTleLines(): Promise<string[]> {
       };
       const entries = payload.member ?? [];
       const parsed: string[] = [];
-      entries.slice(0, 60).forEach((entry) => {
-        if (!entry.line1 || !entry.line2) {
-          return;
-        }
-        parsed.push(entry.name ?? `NORAD-${entry.satelliteId ?? 'UNK'}`);
+      entries.slice(0, 100).forEach((entry) => {
+        if (!entry.line1 || !entry.line2) return;
+        parsed.push(`[active]${entry.name ?? `NORAD-${entry.satelliteId ?? 'UNK'}`}`);
         parsed.push(entry.line1.trim());
         parsed.push(entry.line2.trim());
       });
@@ -1507,17 +1542,7 @@ async function fetchLiveTleLines(): Promise<string[]> {
     return ivanLines;
   }
 
-  // Kostenfrei weil Free-Tier / GitHub Student Pack
-  const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
-  if (response.status === 429) {
-    setHealth('Rate-Limit Celestrak erkannt • nächster Poll verzögert');
-    return [];
-  }
-  if (!response.ok) {
-    throw new Error(`Celestrak Fehler: ${response.status}`);
-  }
-  const tleText = await response.text();
-  return tleText.split('\n').map((line) => line.trim()).filter(Boolean);
+  return [];
 }
 
 const adsbFallbackSeeds = Array.from({ length: 24 }, (_, index) => {
