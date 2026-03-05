@@ -25,12 +25,9 @@ if (ionToken) {
 const container = document.getElementById('cesiumContainer');
 const statusText = document.getElementById('statusText');
 const healthText = document.getElementById('healthText');
-const exportReplayButton = document.getElementById('exportReplayButton') as HTMLButtonElement | null;
-const fullscreenButton = document.getElementById('fullscreenButton') as HTMLButtonElement | null;
 const hoverInfo = document.getElementById('hoverInfo') as HTMLDivElement | null;
 const entityInfoPanel = document.getElementById('entityInfoPanel') as HTMLDivElement | null;
 const pollingIndicator = document.getElementById('pollingIndicator') as HTMLDivElement | null;
-const militaryInfoPanel = document.getElementById('militaryInfoPanel') as HTMLDivElement | null;
 const appRoot = document.getElementById('app');
 const activeVisionMode = document.getElementById('activeVisionMode');
 const recClockText = document.getElementById('recClockText');
@@ -41,6 +38,22 @@ const apiTilesText = document.getElementById('apiTilesText');
 const apiFlightsText = document.getElementById('apiFlightsText');
 const apiAisText = document.getElementById('apiAisText');
 const incidentFeedList = document.getElementById('incidentFeedList') as HTMLDivElement | null;
+
+// Neue HUD Elemente für STRATONOVA Military Interface
+const entityCallsign = document.getElementById('entityCallsign');
+const entityType = document.getElementById('entityType');
+const entityCoords = document.getElementById('entityCoords');
+const entitySpeed = document.getElementById('entitySpeed');
+const entityDistance = document.getElementById('entityDistance');
+const entityStatus = document.getElementById('entityStatus');
+const flightStatus = document.getElementById('flightStatus');
+const satStatus = document.getElementById('satStatus');
+const aisStatus = document.getElementById('aisStatus');
+
+// Legacy buttons (not in new UI but kept for compatibility)
+const exportReplayButton = null;
+const fullscreenButton = null;
+const militaryInfoPanel = null;
 
 type TilesPathStatus = 'Google Direct' | 'Google Helper' | 'OSM Fallback';
 type FlightsFeedStatus = 'Initializing…' | 'OpenSky online' | 'OpenSky fallback' | 'Replay/CZML fallback' | 'Error';
@@ -197,6 +210,11 @@ function renderPollingIndicator(): void {
   }
 
   pollingIndicator.textContent = `Polling • Flights: ${pollStatus.flights} • SAT: ${pollStatus.satellites} • AIS: ${pollStatus.ais} • ${pollStatus.updatedAt}`;
+  
+  // Update individual status elements for new HUD
+  if (flightStatus) flightStatus.textContent = pollStatus.flights;
+  if (satStatus) satStatus.textContent = pollStatus.satellites;
+  if (aisStatus) aisStatus.textContent = pollStatus.ais;
 }
 
 function markPollStatus(channel: keyof Omit<PollStatus, 'updatedAt'>, value: string): void {
@@ -680,62 +698,52 @@ function classifyEntityType(entity: Cesium.Entity): string {
 }
 
 function renderEntityInfoPanel(entity: Cesium.Entity | null): void {
-  if (!entityInfoPanel) {
-    return;
-  }
-
+  // Neue Entity Info Funktion für STRATONAVA HUD - verwendet DOM Elemente statt innerHTML
   if (!entity) {
-    entityInfoPanel.innerHTML = `
-      <h2>Entity Intel // Tactical Readout</h2>
-      <div class="entity-intel-grid">
-        <p><strong>Callsign:</strong> <span data-field="callsign">—</span></p>
-        <p><strong>Typ:</strong> <span data-field="type">—</span></p>
-        <p><strong>Koordinaten:</strong> <span data-field="coords">—</span></p>
-        <p><strong>Speed:</strong> <span data-field="speed">—</span></p>
-        <p><strong>NORAD-ID:</strong> <span data-field="norad">—</span></p>
-        <p><strong>Distanz:</strong> <span data-field="distance">—</span></p>
-        <p><strong>Status:</strong> <span data-field="status">Standby</span></p>
-      </div>
-      <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="">Ausblenden</button>
-    `;
-    bindHideEntityAction();
+    // Reset to default values
+    if (entityCallsign) entityCallsign.textContent = '—';
+    if (entityType) entityType.textContent = '—';
+    if (entityCoords) entityCoords.textContent = '—';
+    if (entitySpeed) entitySpeed.textContent = '—';
+    if (entityDistance) entityDistance.textContent = '—';
+    if (entityStatus) {
+      entityStatus.textContent = 'Standby';
+      entityStatus.className = 'intel-value status-standby';
+    }
+    
+    // Update hide button
+    const hideButton = document.getElementById('hideEntityButton') as HTMLButtonElement | null;
+    if (hideButton) {
+      hideButton.dataset.entityId = '';
+    }
     return;
   }
 
   const meta = extractEntityMeta(entity);
   const coords = formatEntityCoordinates(entity);
-  const entityType = classifyEntityType(entity);
+  const type = classifyEntityType(entity);
   const entityId = safeText(entity.id);
-  entityInfoPanel.innerHTML = `
-    <h2>Entity Intel // Tactical Readout</h2>
-    <div class="entity-intel-grid">
-      <p><strong>Callsign:</strong> <span data-field="callsign">${meta.callsign}</span></p>
-      <p><strong>Typ:</strong> <span data-field="type">${entityType} (${meta.layer})</span></p>
-      <p><strong>Koordinaten:</strong> <span data-field="coords">${coords}</span></p>
-      <p><strong>Speed:</strong> <span data-field="speed">${meta.speed}</span></p>
-      <p><strong>NORAD-ID:</strong> <span data-field="norad">${meta.noradId}</span></p>
-      <p><strong>Distanz:</strong> <span data-field="distance">${meta.distanceKm}</span></p>
-      <p><strong>Status:</strong> <span data-field="status">${meta.status} • ALT ${meta.altitudeM}</span></p>
-    </div>
-    <button type="button" id="hideEntityButton" class="entity-hide-button" data-entity-id="${entityId}">Ausblenden</button>
-  `;
-  bindHideEntityAction();
+  
+  // Update DOM elements directly
+  if (entityCallsign) entityCallsign.textContent = meta.callsign;
+  if (entityType) entityType.textContent = `${type} (${meta.layer})`;
+  if (entityCoords) entityCoords.textContent = coords;
+  if (entitySpeed) entitySpeed.textContent = meta.speed;
+  if (entityDistance) entityDistance.textContent = meta.distanceKm;
+  if (entityStatus) {
+    entityStatus.textContent = `${meta.status} • ALT ${meta.altitudeM}`;
+    entityStatus.className = 'intel-value status-active';
+  }
+  
+  // Update hide button
+  const hideButton = document.getElementById('hideEntityButton') as HTMLButtonElement | null;
+  if (hideButton) {
+    hideButton.dataset.entityId = entityId;
+  }
 }
 
-function renderMilitaryInfoPanel(entries: Array<{ callsign: string; altitude: string; speed: string; source: string }>): void {
-  if (!militaryInfoPanel) {
-    return;
-  }
-
-  if (entries.length === 0) {
-    militaryInfoPanel.innerHTML = '<h2>Military Tracks</h2><p>Keine militärischen Tracks aktiv.</p>';
-    return;
-  }
-
-  const body = entries.slice(0, 6).map((entry) => {
-    return `<p><strong>${entry.callsign}</strong> • ${entry.altitude} • ${entry.speed} • ${entry.source}</p>`;
-  }).join('');
-  militaryInfoPanel.innerHTML = `<h2>Military Tracks</h2>${body}`;
+function renderMilitaryInfoPanel(_entries: Array<{ callsign: string; altitude: string; speed: string; source: string }>): void {
+  // Military info panel removed in new HUD design - functionality merged into incident feed
 }
 
 function bindHideEntityAction(): void {
@@ -2502,22 +2510,46 @@ function syncTopModeButtons(): void {
 }
 
 function bindTopModeSwitch(): void {
-  const buttons = document.querySelectorAll<HTMLButtonElement>('button[data-top-mode]');
+  // Neue Vision Mode Buttons (data-vision Attribut)
+  const buttons = document.querySelectorAll<HTMLButtonElement>('button[data-vision]');
   buttons.forEach((button) => {
     button.addEventListener('click', () => {
-      const mode = button.dataset.topMode as ShaderMode | undefined;
+      const mode = button.dataset.vision as ShaderMode | undefined;
       if (!mode) {
         return;
       }
-
-      const radio = document.querySelector<HTMLInputElement>(`input[name="shaderMode"][value="${mode}"]`);
-      if (radio) {
-        radio.checked = true;
-      }
       setShaderMode(mode);
+      
+      // Update active state on buttons
+      buttons.forEach((btn) => btn.classList.remove('is-active'));
+      button.classList.add('is-active');
+      
+      // Update header vision mode text
+      if (activeVisionMode) {
+        activeVisionMode.textContent = `VISION: ${mode.toUpperCase()}`;
+      }
     });
   });
-  syncTopModeButtons();
+}
+
+function bindLayerBar(): void {
+  const layerButtons = document.querySelectorAll<HTMLButtonElement>('.layer-btn[data-layer]');
+  layerButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const layerName = button.dataset.layer;
+      if (!layerName) {
+        return;
+      }
+      
+      // Toggle active state
+      const isActive = button.classList.contains('is-active');
+      button.classList.toggle('is-active', !isActive);
+      button.setAttribute('aria-pressed', (!isActive).toString());
+      
+      // Call toggle function
+      toggleLayer(layerName);
+    });
+  });
 }
 
 function toggleLayer(layerName: string): void {
@@ -2721,24 +2753,7 @@ function bindToolbarEvents(): void {
     });
   }
 
-  if (exportReplayButton) {
-    exportReplayButton.addEventListener('click', () => {
-      downloadReplayExport();
-    });
-  }
-
-  if (fullscreenButton) {
-    fullscreenButton.addEventListener('click', async () => {
-      // God’s Eye Original-Look – Bilawal-Video March 2026
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setStatus('Fullscreen HUD enabled');
-      } else {
-        await document.exitFullscreen();
-        setStatus('Fullscreen HUD disabled');
-      }
-    });
-  }
+  // Export and fullscreen buttons removed from new HUD design
 
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && document.fullscreenElement) {
@@ -2961,12 +2976,14 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
 
     console.info('[WorldView][Tiles] Starte direkten Google API-Key Pfad');
     // Kostenfrei weil Free-Tier / GitHub Student Pack
-    // Variante 1 – Direkte URL (empfohlen, einfach):
-    const tileset = new Cesium.Cesium3DTileset({
-      url: `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
-      showCreditsOnScreen: true,
-      maximumScreenSpaceError: 2
-    });
+    // Variante 1 – Direkte URL mit fromUrl:
+    const tileset = await Cesium.Cesium3DTileset.fromUrl(
+      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
+      {
+        showCreditsOnScreen: true,
+        maximumScreenSpaceError: 2
+      }
+    );
     viewer.scene.primitives.add(tileset);
     viewer.scene.globe.show = false; // Globe aus, nur Tiles
     setSceneGlobeVisibility(false, 'google-direct-tileset-ready');
@@ -3017,6 +3034,7 @@ function startRateLimitedPollers(): void {
 
 bindToolbarEvents();
 bindTopModeSwitch();
+bindLayerBar();
 bindInteractionHandlers();
 initThreeHudOverlay();
 createBottomLayerBar();
