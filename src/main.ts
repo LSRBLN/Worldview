@@ -3030,6 +3030,200 @@ function startRateLimitedPollers(): void {
   window.setInterval(() => {
     void pollAdsbLayer();
   }, 10 * 1000);
+  
+  // Neue Live-Datenquellen initialisieren
+  initOpenSkyLiveFlights();
+  initAISStreamLiveShips();
+}
+
+// === LIVE FLUGZEUGE – OpenSky Network (kostenlos) ===
+// Kostenfrei weil Free-Tier / GitHub Student Pack
+let openSkyDataSource: Cesium.CustomDataSource | null = null;
+
+async function initOpenSkyLiveFlights(): Promise<void> {
+  const openSkyBaseUrl = import.meta.env.VITE_OPENSKY_BASE_URL || 'https://opensky-network.org/api';
+  
+  // DataSource erstellen
+  openSkyDataSource = new Cesium.CustomDataSource('OpenSky Live Flights');
+  await viewer.dataSources.add(openSkyDataSource);
+  
+  // Clustering aktivieren für Performance
+  openSkyDataSource.clustering.enabled = true;
+  openSkyDataSource.clustering.pixelRange = 60;
+  openSkyDataSource.clustering.minimumClusterSize = 4;
+  
+  async function updateFlights() {
+    try {
+      // Bounding Box für MENA Region (ca. 20°N-40°N, 30°E-60°E)
+      const res = await fetch(`${openSkyBaseUrl}/states/all?lamin=20&lamax=40&lomin=30&lomax=60`);
+      if (!res.ok) {
+        console.warn('[OpenSky] API Fehler:', res.status);
+        return;
+      }
+
+      const data = await res.json();
+      if (!data.states || data.states.length === 0) {
+        return;
+      }
+
+      // Alte Entities entfernen (oder updaten – hier neu für Einfachheit)
+      openSkyDataSource?.entities.removeAll();
+
+      data.states.forEach((state: any[]) => {
+        const [icao24, callsign, , , , lon, lat, baroAltitude, onGround, velocity] = state;
+
+        if (!lon || !lat || onGround) return; // nur fliegende
+
+        const alt = baroAltitude ? baroAltitude : 10000; // m
+        const speed = velocity ? Math.round(velocity * 3.6) : 0; // km/h
+        
+        // Flugzeug-Entity erstellen
+        const entity = openSkyDataSource?.entities.add({
+          id: `opensky-${icao24}`,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+          billboard: {
+            image: planeBlueIconDataUri,
+            scale: 0.6,
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            color: Cesium.Color.fromCssColorString('#00ff9d')
+          },
+          label: {
+            text: (callsign || icao24).trim().substring(0, 8),
+            font: 'bold 11px "Courier New", monospace',
+            fillColor: Cesium.Color.fromCssColorString('#00ff9d'),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            pixelOffset: new Cesium.Cartesian2(0, -25),
+            show: true
+          },
+          properties: {
+            icao24,
+            callsign: callsign || 'UNKNOWN',
+            altitude: Math.round(alt),
+            speed,
+            source: 'OpenSky Network'
+          }
+        });
+      });
+
+      markPollStatus('flights', 'opensky-online');
+      viewer.scene.requestRender();
+    } catch (err) {
+      console.warn('[OpenSky] Fehler:', err);
+      markPollStatus('flights', 'opensky-error');
+    }
+  }
+
+  // Alle 12 Sekunden aktualisieren (Rate-Limit-sicher)
+  updateFlights();
+  window.setInterval(updateFlights, 12000);
+  
+  console.info('[OpenSky] Live Flights initialisiert');
+}
+
+// === LIVE SCHIFFE – AISStream.io (kostenlos) ===
+// Kostenfrei weil Free-Tier / GitHub Student Pack
+let aisDataSource: Cesium.CustomDataSource | null = null;
+
+function initAISStreamLiveShips(): void {
+  const aisKey = import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined;
+  
+  if (!aisKey) {
+    console.info('[AISStream] Kein API Key konfiguriert - überspringe');
+    return;
+  }
+
+  // DataSource erstellen
+  aisDataSource = new Cesium.CustomDataSource('AISStream Live Ships');
+  viewer.dataSources.add(aisDataSource);
+  
+  // Clustering aktivieren
+  aisDataSource.clustering.enabled = true;
+  aisDataSource.clustering.pixelRange = 50;
+  aisDataSource.clustering.minimumClusterSize = 3;
+
+  function connect() {
+    aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
+
+    aisSocket.onopen = () => {
+      console.info('[AISStream] WebSocket verbunden');
+      markPollStatus('ais', 'aisstream-connected');
+      
+      // Bounding Box für Straße von Hormuz / Persischer Golf
+      // [lat_min, lon_min], [lat_max, lon_max]
+      aisSocket?.send(JSON.stringify({
+        APIkey: aisKey,
+        BoundingBoxes: [[[23.5, 55.0], [28.0, 58.0]]]
+      }));
+    };
+
+    aisSocket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (![1, 2, 3].includes(msg.MessageType)) return;
+
+        const pos = msg.Message.PositionReport || msg.Message.EnhancedPositionReport;
+        if (!pos) return;
+
+        const mmsi = msg.MetaData.MMSI.toString();
+        const name = (msg.MetaData.ShipName || 'UNKNOWN').trim();
+        const sog = msg.Message.PositionReport?.Sog || 0; // Speed over ground
+
+        let entity = aisDataSource?.entities.getById(`ais-${mmsi}`);
+
+        if (!entity) {
+          // Neues Schiff erstellen
+          aisDataSource?.entities.add({
+            id: `ais-${mmsi}`,
+            position: Cesium.Cartesian3.fromDegrees(pos.Longitude, pos.Latitude, 0),
+            billboard: {
+              image: shipIconDataUri,
+              scale: 0.7,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              color: Cesium.Color.fromCssColorString('#7ee7ff')
+            },
+            label: {
+              text: name.length > 15 ? name.substring(0, 12) + '...' : name,
+              font: '10px "Courier New", monospace',
+              fillColor: Cesium.Color.fromCssColorString('#7ee7ff'),
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              pixelOffset: new Cesium.Cartesian2(0, -20)
+            },
+            properties: {
+              mmsi,
+              name,
+              speed: sog,
+              source: 'AISStream.io'
+            }
+          });
+        } else {
+          // Position updaten (verwende ConstantPositionProperty)
+          entity.position = new Cesium.ConstantPositionProperty(
+            Cesium.Cartesian3.fromDegrees(pos.Longitude, pos.Latitude, 0)
+          );
+        }
+
+        viewer.scene.requestRender();
+      } catch (e) {
+        console.error('[AISStream] Parse-Fehler:', e);
+      }
+    };
+
+    aisSocket.onclose = () => {
+      console.info('[AISStream] Verbindung getrennt - reconnect in 10s');
+      markPollStatus('ais', 'aisstream-reconnecting');
+      window.setTimeout(connect, 10000);
+    };
+
+    aisSocket.onerror = (err) => {
+      console.error('[AISStream] WebSocket Fehler:', err);
+      markPollStatus('ais', 'aisstream-error');
+    };
+  }
+
+  connect();
+  console.info('[AISStream] Live Ships initialisiert');
 }
 
 bindToolbarEvents();
