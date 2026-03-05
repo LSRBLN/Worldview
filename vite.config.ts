@@ -34,5 +34,18 @@ export default defineConfig({
   ],
   define: {
     CESIUM_BASE_URL: JSON.stringify('/cesium')
+  },
+  build: {
+    chunkSizeWarningLimit: 6000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          cesium: ['cesium'],
+          satellite: ['satellite.js'],
+          three: ['three'],
+          gsap: ['gsap']
+        }
+      }
+    }
   }
 });
