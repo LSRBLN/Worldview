@@ -35,6 +35,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prepare SPA fallback for GitHub Pages
+        run: |
+          # Kostenfrei weil Free-Tier / GitHub Student Pack
+          cp ./dist/index.html ./dist/404.html
+          touch ./dist/.nojekyll
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:

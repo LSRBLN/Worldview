@@ -2961,15 +2961,14 @@ async function addGooglePhotorealisticTiles(): Promise<void> {
 
     console.info('[WorldView][Tiles] Starte direkten Google API-Key Pfad');
     // Kostenfrei weil Free-Tier / GitHub Student Pack
-    const googleTileset = await Cesium.Cesium3DTileset.fromUrl(
-      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
-      {
-        showCreditsOnScreen: true,
-        maximumScreenSpaceError: 2
-      }
-    );
-
-    viewer.scene.primitives.add(googleTileset);
+    // Variante 1 – Direkte URL (empfohlen, einfach):
+    const tileset = new Cesium.Cesium3DTileset({
+      url: `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleApiKey}`,
+      showCreditsOnScreen: true,
+      maximumScreenSpaceError: 2
+    });
+    viewer.scene.primitives.add(tileset);
+    viewer.scene.globe.show = false; // Globe aus, nur Tiles
     setSceneGlobeVisibility(false, 'google-direct-tileset-ready');
     updateRuntimeDiagnostics({
       tilesPath: 'Google Direct',

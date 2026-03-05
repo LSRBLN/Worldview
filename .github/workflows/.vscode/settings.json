@@ -1,0 +1,165 @@
+{
+  // === Editor & Formatierung (Prettier + ESLint) ===
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.rulers": [100, 120],
+  "editor.minimap.enabled": false,
+  "editor.inlineSuggest.enabled": true,
+  "editor.acceptSuggestionOnEnter": "smart",
+  "editor.wordWrap": "on",
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+
+  // === TypeScript ===
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "typescript.preferences.importModuleSpecifierEnding": "minimal",
+  "typescript.inlayHints.parameterNames.enabled": "all",
+  "typescript.inlayHints.functionLikeReturnTypes.enabled": true,
+  "typescript.inlayHints.variableTypes.enabled": true,
+
+  // === ESLint ===
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+    "glsl"
+  ],
+  "eslint.format.enable": true,
+  "eslint.lintTask.enable": true,
+  "eslint.workingDirectories": ["./"],
+
+  // === Prettier ===
+  "prettier.singleQuote": true,
+  "prettier.semi": true,
+  "prettier.trailingComma": "es5",
+  "prettier.printWidth": 100,
+  "prettier.tabWidth": 2,
+  "prettier.useTabs": false,
+  "prettier.arrowParens": "avoid",
+
+  // === Vite ===
+  "vite.autoUpdateDependencies": true,
+  "vite.devServer.port": 5173,
+  "vite.devServer.strictPort": true,
+  "vite.debug": true,
+
+  // === GLSL / Shader ===
+  "files.associations": {
+    "*.glsl": "glsl",
+    "*.vert": "glsl",
+    "*.frag": "glsl",
+    "*.vs": "glsl",
+    "*.fs": "glsl",
+    "*.shader": "glsl"
+  },
+  "[glsl]": {
+    "editor.defaultFormatter": "slevesque.shader",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+  "shadertoy.enable": true,
+  "shadertoy.previewSize": "medium",
+
+  // === Cesium-spezifisch (falls du eine Cesium-Viewer-Extension nutzt) ===
+  "cesium.viewer.enabled": true,
+  "cesium.viewer.showOnHover": true,
+
+  // === GitLens ===
+  "gitlens.defaultDateFormat": "DD.MM.YYYY HH:mm",
+  "gitlens.codeLens.recentChange.enabled": true,
+  "gitlens.codeLens.authors.enabled": false,
+  "gitlens.currentLine.enabled": true,
+  "gitlens.statusBar.enabled": true,
+  "gitlens.hovers.currentLine.over": "line",
+
+  // === REST Client (für OpenSky, Celestrak, AIS-Tests) ===
+  "rest-client.environmentVariables": {
+    "$shared": {
+      "opensky": "https://opensky-network.org/api",
+      "celestrak": "https://celestrak.org/NORAD/elements",
+      "aisstream": "wss://stream.aisstream.io/v0/stream",
+      "googleMaps": "https://tile.googleapis.com/v1/3dtiles"
+    },
+    "dev": {
+      "baseUrl": "http://localhost:5173"
+    }
+  },
+  "rest-client.followredirect": true,
+  "rest-client.rememberCookiesForSubsequentRequests": true,
+
+  // === Dateien & Explorer ===
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.vercel": true,
+    "**/*.log": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.vercel": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  },
+
+  // === Terminal ===
+  "terminal.integrated.fontFamily": "Consolas, 'Courier New', monospace",
+  "terminal.integrated.fontSize": 13,
+  "terminal.integrated.cursorStyle": "line",
+  "terminal.integrated.defaultProfile.linux": "bash",
+
+  // === Theme & visuelle Optimierungen (militärischer/neon Look) ===
+  "workbench.colorCustomizations": {
+    "editor.background": "#0a0a0a",
+    "editor.foreground": "#d4d4d4",
+    "editorLineNumber.foreground": "#555555",
+    "editorLineNumber.activeForeground": "#00ff9d",
+    "editor.selectionBackground": "#004d40",
+    "editorCursor.foreground": "#00ff9d",
+    "activityBar.background": "#0a0a0a",
+    "statusBar.background": "#111111",
+    "statusBar.foreground": "#00ff9d"
+  },
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "comment",
+        "settings": {
+          "foreground": "#6A9955",
+          "fontStyle": "italic"
+        }
+      },
+      {
+        "scope": "string",
+        "settings": {
+          "foreground": "#ce9178"
+        }
+      }
+    ]
+  },
+
+  // === Sonstiges ===
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "update.mode": "manual",
+  "telemetry.telemetryLevel": "off",
+  "security.workspace.trust.untrustedFiles": "open"
+}
